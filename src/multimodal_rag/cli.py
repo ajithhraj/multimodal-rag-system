@@ -36,12 +36,20 @@ def ingest(
 @app.command()
 def ask(
     question: str = typer.Argument(..., help="Question for retrieval + generation."),
+    image: Path | None = typer.Option(None, help="Optional query image path for multimodal retrieval."),
     collection: str | None = typer.Option(None, help="Collection name."),
     top_k: int | None = typer.Option(None, min=1, max=50, help="Top-k per modality."),
     backend: Literal["faiss", "qdrant"] | None = typer.Option(None, help="Vector backend override."),
 ) -> None:
     engine = _build_engine(backend)
-    result = engine.query(question=question, collection=collection, top_k=top_k)
+    if image is not None and not image.exists():
+        raise typer.BadParameter(f"Image path not found: {image}")
+    result = engine.query(
+        question=question,
+        collection=collection,
+        top_k=top_k,
+        query_image_path=image,
+    )
     typer.echo(result.answer)
     if result.citations:
         typer.echo("\nCitations:")

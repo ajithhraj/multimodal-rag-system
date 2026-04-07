@@ -111,12 +111,28 @@ class MultimodalRAG:
             )
         return citations
 
-    def query(self, question: str, collection: str | None = None, top_k: int | None = None) -> QueryAnswer:
+    def _build_vision_query_vector(self, question: str, query_image_path: Path | None) -> list[float]:
+        if query_image_path and query_image_path.exists():
+            vectors = self.vision_embedder.embed_images(
+                [query_image_path],
+                [question or query_image_path.name],
+            )
+            if vectors:
+                return vectors[0]
+        return self.vision_embedder.embed_query(question)
+
+    def query(
+        self,
+        question: str,
+        collection: str | None = None,
+        top_k: int | None = None,
+        query_image_path: Path | None = None,
+    ) -> QueryAnswer:
         target_collection = self._resolve_collection(collection)
         per_modality_k = top_k or self.settings.retrieval_top_k_per_modality
 
         text_query_vec = self.text_embedder.embed_query(question)
-        vision_query_vec = self.vision_embedder.embed_query(question)
+        vision_query_vec = self._build_vision_query_vector(question, query_image_path)
 
         text_hits = self.store.query(
             target_collection,

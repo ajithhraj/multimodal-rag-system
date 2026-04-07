@@ -64,6 +64,7 @@ copy .env.example .env
 ```bash
 mmrag ingest ./data
 mmrag ask "What are the major metrics shown in the latest PDF tables?"
+mmrag ask "Find charts similar to this trend" --image ./data/query_chart.png
 mmrag serve --host 0.0.0.0 --port 8000
 ```
 
@@ -81,11 +82,20 @@ docker compose up --build
 - `POST /ingest-paths`
 - `POST /ingest-files`
 - `POST /query`
+- `POST /query-multimodal` (multipart: question + optional image)
 
 `POST /query` returns:
 - `answer`
 - `sources` (retrieved chunks + score)
 - `citations` (source file, modality, page number, excerpt)
+
+Example multimodal query:
+
+```bash
+curl -X POST http://localhost:8000/query-multimodal \
+  -F "question=Find similar chart patterns" \
+  -F "image=@./data/query_chart.png"
+```
 
 ## Benchmark Section (Portfolio-Friendly)
 
@@ -141,6 +151,7 @@ Important env variables:
 
 - `mmrag ingest <path>`
 - `mmrag ask <question>`
+- `mmrag ask <question> --image <path-to-image>`
 - `mmrag serve`
 
 Run `mmrag --help` for full options.

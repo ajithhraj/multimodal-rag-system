@@ -39,6 +39,15 @@ class DummyVisionEmbedder(DummyEmbedder):
         return [[0.5, 0.5] for _ in image_paths]
 
 
+class SpyVisionEmbedder(DummyVisionEmbedder):
+    def __init__(self):
+        self.image_calls = []
+
+    def embed_images(self, image_paths, fallback_texts):
+        self.image_calls.append((list(image_paths), list(fallback_texts)))
+        return super().embed_images(image_paths, fallback_texts)
+
+
 class DummySynthesizer:
     def generate(self, question, hits):
         return f"answer:{question}:{len(hits)}"
@@ -101,3 +110,26 @@ def test_engine_query_uses_lexical_index_when_dense_empty(tmp_path):
     result = engine.query("what is the contract number")
     assert len(result.hits) == 1
     assert result.hits[0].chunk.chunk_id == "lex-1"
+
+
+def test_engine_query_uses_query_image_vector_when_image_provided(tmp_path):
+    settings = Settings(
+        storage_dir=Path(tmp_path),
+        retrieval_top_k_per_modality=2,
+        max_context_chunks=5,
+        retrieval_enable_reranker=False,
+    )
+    store = EmptyQueryStore()
+    engine = MultimodalRAG(settings=settings, store=store)
+    engine.text_embedder = DummyEmbedder()  # type: ignore[assignment]
+    vision = SpyVisionEmbedder()
+    engine.vision_embedder = vision  # type: ignore[assignment]
+    engine.synthesizer = DummySynthesizer()  # type: ignore[assignment]
+
+    query_image = Path(tmp_path) / "query.png"
+    query_image.write_bytes(b"fake")
+
+    result = engine.query("find similar", query_image_path=query_image)
+    assert "answer:find similar" in result.answer
+    assert len(vision.image_calls) == 1
+    assert vision.image_calls[0][0][0] == query_image

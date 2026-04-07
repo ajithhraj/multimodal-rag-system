@@ -10,11 +10,13 @@ from multimodal_rag.models import Citation, Chunk, Modality, QueryAnswer, Retrie
 class StubEngine:
     def __init__(self):
         self.settings = type("StubSettings", (), {"storage_dir": Path(".")})()
+        self.last_query_image_path = None
 
     def ingest_paths(self, paths, collection=None):
         return {"files": len(paths), "chunks": 1, "text": 1, "table": 0, "image": 0}
 
-    def query(self, question, collection=None, top_k=None):
+    def query(self, question, collection=None, top_k=None, query_image_path=None):
+        self.last_query_image_path = query_image_path
         hit = RetrievalHit(
             chunk=Chunk(
                 chunk_id="x1",
@@ -56,3 +58,23 @@ def test_query_endpoint():
     assert payload["sources"][0]["modality"] == "text"
     assert len(payload["citations"]) == 1
     assert payload["citations"][0]["page_number"] == 3
+
+
+def test_query_multimodal_endpoint_with_image():
+    app = create_app()
+    engine = StubEngine()
+    app.dependency_overrides[get_engine] = lambda: engine
+    client = TestClient(app)
+
+    files = {
+        "image": ("query.png", b"fake-image-bytes", "image/png"),
+    }
+    data = {
+        "question": "find similar chart",
+        "top_k": "3",
+    }
+    response = client.post("/query-multimodal", data=data, files=files)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"] == "stub:find similar chart"
+    assert engine.last_query_image_path is not None

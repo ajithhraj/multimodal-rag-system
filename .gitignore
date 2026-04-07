@@ -13,3 +13,4 @@ venv/
 .env
 .rag_store/
 tmp_uploads/
+tmp_queries/
