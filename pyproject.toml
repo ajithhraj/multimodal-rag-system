@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=69.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multimodal-rag-system"
+version = "0.1.0"
+description = "Production-style multimodal RAG package for PDFs, images, and tables."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Codex + User" }
+]
+dependencies = [
+  "fastapi>=0.115.0",
+  "langchain-core>=0.3.0",
+  "langchain-openai>=0.2.0",
+  "langchain-text-splitters>=0.3.0",
+  "numpy>=1.26.0",
+  "orjson>=3.10.0",
+  "pdfplumber>=0.11.0",
+  "pillow>=10.4.0",
+  "pydantic>=2.8.0",
+  "pydantic-settings>=2.5.0",
+  "pypdf>=5.0.0",
+  "python-multipart>=0.0.12",
+  "qdrant-client>=1.12.0",
+  "typer>=0.12.5",
+  "uvicorn[standard]>=0.32.0"
+]
+
+[project.optional-dependencies]
+faiss = [
+  "faiss-cpu>=1.8.0"
+]
+vision = [
+  "sentence-transformers>=3.0.0",
+  "pytesseract>=0.3.10"
+]
+dev = [
+  "httpx>=0.28.0",
+  "pytest>=8.3.0",
+  "ruff>=0.7.0"
+]
+
+[project.scripts]
+mmrag = "multimodal_rag.cli:app"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

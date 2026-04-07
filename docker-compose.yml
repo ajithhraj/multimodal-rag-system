@@ -1,0 +1,11 @@
+services:
+  mmrag:
+    build: .
+    container_name: mmrag
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./.rag_store:/app/.rag_store
+      - ./data:/app/data
