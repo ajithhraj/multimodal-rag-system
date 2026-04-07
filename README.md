@@ -1,52 +1,57 @@
 # Multimodal RAG System
 
-Production-ready multimodal Retrieval-Augmented Generation (RAG) for documents, tables, and images.
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![FastAPI](https://img.shields.io/badge/api-fastapi-009688)
+![Vector DB](https://img.shields.io/badge/vector-qdrant%20%7C%20faiss-5b4bdb)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-The system ingests:
-- PDFs (text + tables)
-- images (captions + optional OCR)
-- CSV/TSV table files
+Production-style multimodal Retrieval-Augmented Generation (RAG) system for real-world documents.
 
-and serves:
-- a CLI for local workflows
-- a FastAPI REST API for integration
-- Dockerized runtime for deployment
+## Overview
 
-## Why This Project
+This project ingests and queries:
+- PDFs (text + table extraction)
+- images (vision captions + optional OCR)
+- CSV/TSV tabular files
 
-Most RAG demos handle plain text only. This project follows production patterns for multimodal retrieval:
-- modality-aware indexing
-- hybrid retrieval (dense + lexical BM25)
-- reciprocal rank fusion (RRF)
-- optional cross-encoder reranking
-- citation-rich answers with source grounding
+It ships with:
+- a reusable Python package (`src` layout)
+- a CLI (`mmrag`) for local workflows
+- a FastAPI REST service for product integration
+- Docker support for deployable runtime
 
-## Architecture
+## What Makes It Strong
 
-1. Ingestion
-- Parse PDF text
-- Extract PDF tables
-- Caption images with a vision model (optional)
-- Attach OCR text when available
+- Hybrid retrieval: dense vector search + lexical BM25
+- Reciprocal Rank Fusion (RRF) for robust ranking
+- Optional cross-encoder reranker for precision
+- Citation-rich answers (`source`, `modality`, `page`, `excerpt`)
+- Pluggable vector backends (`faiss` and `qdrant`)
 
-2. Embedding
-- Text/table embedding
-- Image semantic embedding (caption + optional CLIP)
+## System Architecture
 
-3. Storage
-- FAISS backend with NumPy fallback
-- Qdrant backend (embedded local path or remote endpoint)
-
-4. Retrieval and Generation
-- Dense retrieval per modality (text/table/image)
-- Sparse lexical retrieval (BM25 with fallback scorer)
-- Reciprocal Rank Fusion (RRF)
-- Optional cross-encoder reranking
-- Grounded answer synthesis via LangChain orchestration
+```mermaid
+flowchart LR
+    A["Input Files (PDF, Image, CSV/TSV)"] --> B["Ingestion"]
+    B --> B1["PDF Text + Tables"]
+    B --> B2["Image Caption + OCR"]
+    B --> B3["Tabular Normalization"]
+    B1 --> C["Chunking + Metadata"]
+    B2 --> C
+    B3 --> C
+    C --> D["Embedding Layer"]
+    D --> E["Vector Store (FAISS / Qdrant)"]
+    C --> F["Lexical Index (BM25)"]
+    E --> G["Dense Retrieval"]
+    F --> H["Lexical Retrieval"]
+    G --> I["RRF Fusion"]
+    H --> I
+    I --> J["Optional Cross-Encoder Rerank"]
+    J --> K["LLM Synthesis"]
+    K --> L["Answer + Citations"]
+```
 
 ## Quickstart
-
-### Local setup
 
 ```bash
 cd multimodal-rag-system
@@ -56,21 +61,9 @@ pip install -e ".[dev,vision]"
 copy .env.example .env
 ```
 
-### Ingest data
-
 ```bash
 mmrag ingest ./data
-```
-
-### Ask questions
-
-```bash
 mmrag ask "What are the major metrics shown in the latest PDF tables?"
-```
-
-### Run API
-
-```bash
 mmrag serve --host 0.0.0.0 --port 8000
 ```
 
@@ -82,36 +75,67 @@ API docs: `http://localhost:8000/docs`
 docker compose up --build
 ```
 
-## API Endpoints
+## API Surface
 
 - `GET /health`
 - `POST /ingest-paths`
 - `POST /ingest-files`
 - `POST /query`
 
-`/query` returns:
+`POST /query` returns:
 - `answer`
-- `sources` (retrieved chunks + scores)
-- `citations` (source path, modality, page number, excerpt)
+- `sources` (retrieved chunks + score)
+- `citations` (source file, modality, page number, excerpt)
+
+## Benchmark Section (Portfolio-Friendly)
+
+Use this section to publish your own numbers after running on your dataset.
+
+| Scenario | Data Size | Hardware | Avg Query Latency | p95 Latency | Notes |
+|---|---:|---|---:|---:|---|
+| Dense only | TBD | TBD | TBD | TBD | baseline |
+| Dense + BM25 + RRF | TBD | TBD | TBD | TBD | hybrid |
+| Hybrid + reranker | TBD | TBD | TBD | TBD | highest precision |
+
+Suggested evaluation metrics to report:
+- `Recall@k`
+- `MRR`
+- answer groundedness / citation precision
+- end-to-end latency
+
+## Screenshots To Add
+
+Add these images under `docs/assets/` for a polished portfolio presentation:
+- API docs screenshot (`/docs`)
+- ingestion CLI run
+- query response with citations
+- architecture diagram snapshot
+
+## Resume-Ready Outcomes
+
+This project demonstrates:
+- end-to-end LLM product engineering (ingestion to API)
+- retrieval engineering beyond dense-only pipelines
+- production-aware Python packaging and deployment
+- configurable AI systems with clean interfaces and fallbacks
+- testing and code quality workflows (`pytest`, `ruff`)
 
 ## Configuration
 
-Important environment variables:
-- `MMRAG_VECTOR_BACKEND` = `faiss` or `qdrant`
-- `MMRAG_STORAGE_DIR` = local state dir (default `.rag_store`)
-- `MMRAG_COLLECTION` = logical index namespace
-- `MMRAG_OPENAI_API_KEY` = enables OpenAI generation and vision captioning
-- `MMRAG_RETRIEVAL_TOP_K_PER_MODALITY` = dense candidates per modality
-- `MMRAG_RETRIEVAL_TOP_K_LEXICAL` = lexical BM25 candidates
-- `MMRAG_RETRIEVAL_RRF_K` = RRF fusion constant
-- `MMRAG_RETRIEVAL_ENABLE_RERANKER` = enable/disable cross-encoder rerank
-- `MMRAG_RETRIEVAL_RERANKER_MODEL` = cross-encoder model name
-- `MMRAG_RETRIEVAL_RERANK_CANDIDATES` = fused candidates before rerank
-
-For Qdrant:
+Important env variables:
+- `MMRAG_VECTOR_BACKEND`
+- `MMRAG_STORAGE_DIR`
+- `MMRAG_COLLECTION`
+- `MMRAG_OPENAI_API_KEY`
+- `MMRAG_RETRIEVAL_TOP_K_PER_MODALITY`
+- `MMRAG_RETRIEVAL_TOP_K_LEXICAL`
+- `MMRAG_RETRIEVAL_RRF_K`
+- `MMRAG_RETRIEVAL_ENABLE_RERANKER`
+- `MMRAG_RETRIEVAL_RERANKER_MODEL`
+- `MMRAG_RETRIEVAL_RERANK_CANDIDATES`
 - `MMRAG_QDRANT_URL`
 - `MMRAG_QDRANT_API_KEY`
-- `MMRAG_QDRANT_PATH` (embedded mode)
+- `MMRAG_QDRANT_PATH`
 
 ## CLI
 
@@ -119,7 +143,7 @@ For Qdrant:
 - `mmrag ask <question>`
 - `mmrag serve`
 
-Run `mmrag --help` for full command options.
+Run `mmrag --help` for full options.
 
 ## Development
 
