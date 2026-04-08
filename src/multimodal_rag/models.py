@@ -61,3 +61,5 @@ class QueryAnswer:
     hits: list[RetrievalHit]
     citations: list[Citation] = field(default_factory=list)
     retrieval_mode: str | None = None
+    corrected: bool = False
+    retrieval_diagnostics: dict[str, Any] = field(default_factory=dict)

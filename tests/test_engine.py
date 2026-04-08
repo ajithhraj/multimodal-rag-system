@@ -337,3 +337,64 @@ def test_engine_query_weighted_hybrid_prioritizes_lexical_signal(tmp_path):
     result = engine.query("critical_signal", retrieval_mode="hybrid")
     assert len(result.hits) >= 2
     assert result.hits[0].chunk.chunk_id == "lex-1"
+
+
+def test_engine_query_auto_corrects_low_coverage_hits(tmp_path):
+    settings = Settings(
+        storage_dir=Path(tmp_path),
+        retrieval_top_k_per_modality=1,
+        retrieval_top_k_lexical=1,
+        retrieval_enable_reranker=False,
+        retrieval_enable_result_diversity=False,
+        retrieval_auto_correct_enabled=True,
+        retrieval_auto_correct_min_hits=2,
+        retrieval_auto_correct_min_unique_sources=2,
+        retrieval_auto_correct_min_unique_modalities=1,
+        retrieval_auto_correct_target_mode="hybrid",
+        retrieval_auto_correct_top_k_multiplier=3.0,
+        retrieval_auto_correct_lexical_multiplier=1.0,
+    )
+    store = FakeStore()
+    engine = MultimodalRAG(settings=settings, store=store)
+    engine.text_embedder = DummyEmbedder()  # type: ignore[assignment]
+    engine.vision_embedder = DummyVisionEmbedder()  # type: ignore[assignment]
+    engine.synthesizer = DummySynthesizer()  # type: ignore[assignment]
+
+    scoped_collection = engine._scoped_collection(None, None)
+    chunk_1 = Chunk("c1", "docs/a.pdf", Modality.TEXT, "alpha")
+    chunk_2 = Chunk("c2", "docs/b.pdf", Modality.TEXT, "beta")
+    chunk_3 = Chunk("c3", "docs/c.pdf", Modality.TEXT, "gamma")
+    store.upsert(scoped_collection, "text", [[1, 0], [0.9, 0.1], [0.8, 0.2]], [chunk_1, chunk_2, chunk_3])
+
+    result = engine.query("coverage")
+    assert result.corrected is True
+    assert result.retrieval_mode == "hybrid"
+    assert len(result.hits) >= 2
+    assert result.retrieval_diagnostics["initial_quality"]["hit_count"] == 1
+    assert result.retrieval_diagnostics["final_quality"]["hit_count"] >= 2
+
+
+def test_engine_query_does_not_auto_correct_when_mode_is_explicit(tmp_path):
+    settings = Settings(
+        storage_dir=Path(tmp_path),
+        retrieval_top_k_per_modality=1,
+        retrieval_enable_reranker=False,
+        retrieval_enable_result_diversity=False,
+        retrieval_auto_correct_enabled=True,
+        retrieval_auto_correct_min_hits=3,
+        retrieval_auto_correct_target_mode="hybrid",
+    )
+    store = FakeStore()
+    engine = MultimodalRAG(settings=settings, store=store)
+    engine.text_embedder = DummyEmbedder()  # type: ignore[assignment]
+    engine.vision_embedder = DummyVisionEmbedder()  # type: ignore[assignment]
+    engine.synthesizer = DummySynthesizer()  # type: ignore[assignment]
+
+    scoped_collection = engine._scoped_collection(None, None)
+    chunk_1 = Chunk("c1", "docs/a.pdf", Modality.TEXT, "alpha")
+    chunk_2 = Chunk("c2", "docs/b.pdf", Modality.TEXT, "beta")
+    store.upsert(scoped_collection, "text", [[1, 0], [0.9, 0.1]], [chunk_1, chunk_2])
+
+    result = engine.query("coverage", retrieval_mode="dense_only")
+    assert result.corrected is False
+    assert result.retrieval_mode == "dense_only"

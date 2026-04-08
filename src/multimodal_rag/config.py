@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     retrieval_enable_result_diversity: bool = True
     retrieval_max_chunks_per_source: int = Field(default=3, ge=1, le=20)
     retrieval_duplicate_similarity_threshold: float = Field(default=0.9, ge=0.5, le=1.0)
+    retrieval_auto_correct_enabled: bool = True
+    retrieval_auto_correct_min_hits: int = Field(default=3, ge=1, le=20)
+    retrieval_auto_correct_min_unique_sources: int = Field(default=2, ge=1, le=20)
+    retrieval_auto_correct_min_unique_modalities: int = Field(default=2, ge=1, le=3)
+    retrieval_auto_correct_target_mode: Literal["hybrid", "hybrid_rerank"] = "hybrid_rerank"
+    retrieval_auto_correct_top_k_multiplier: float = Field(default=2.0, ge=1.0, le=5.0)
+    retrieval_auto_correct_lexical_multiplier: float = Field(default=2.0, ge=1.0, le=5.0)
 
     auth_enabled: bool = False
     auth_api_key_header: str = "X-API-Key"

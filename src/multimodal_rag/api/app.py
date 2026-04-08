@@ -44,6 +44,8 @@ def create_app() -> FastAPI:
                 for citation in result.citations
             ],
             retrieval_mode=result.retrieval_mode,
+            corrected=result.corrected,
+            retrieval_diagnostics=result.retrieval_diagnostics,
             latency_ms=latency_ms,
         )
 

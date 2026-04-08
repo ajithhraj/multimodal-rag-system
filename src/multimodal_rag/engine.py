@@ -266,22 +266,45 @@ class MultimodalRAG:
                 return vectors[0]
         return self.vision_embedder.embed_query(question)
 
-    def query(
+    @staticmethod
+    def _quality_stats(hits: list[RetrievalHit]) -> dict[str, float | int]:
+        unique_sources = len({hit.chunk.source_path for hit in hits})
+        unique_modalities = len({hit.chunk.modality.value for hit in hits})
+        top_score = hits[0].score if hits else 0.0
+        return {
+            "hit_count": len(hits),
+            "unique_sources": unique_sources,
+            "unique_modalities": unique_modalities,
+            "top_score": float(top_score),
+        }
+
+    def _quality_tuple(self, hits: list[RetrievalHit]) -> tuple[int, int, int, float]:
+        stats = self._quality_stats(hits)
+        return (
+            int(stats["hit_count"]),
+            int(stats["unique_sources"]),
+            int(stats["unique_modalities"]),
+            float(stats["top_score"]),
+        )
+
+    def _needs_auto_correction(self, hits: list[RetrievalHit]) -> bool:
+        stats = self._quality_stats(hits)
+        return (
+            int(stats["hit_count"]) < self.settings.retrieval_auto_correct_min_hits
+            or int(stats["unique_sources"]) < self.settings.retrieval_auto_correct_min_unique_sources
+            or int(stats["unique_modalities"]) < self.settings.retrieval_auto_correct_min_unique_modalities
+        )
+
+    def _retrieve_hits(
         self,
+        target_collection: str,
         question: str,
-        collection: str | None = None,
-        top_k: int | None = None,
-        query_image_path: Path | None = None,
-        retrieval_mode: str | None = None,
-        tenant_id: str | None = None,
-    ) -> QueryAnswer:
-        target_collection = self._scoped_collection(collection, tenant_id)
-        per_modality_k = top_k or self.settings.retrieval_top_k_per_modality
-        mode = self._resolve_retrieval_mode(retrieval_mode, self._default_retrieval_mode())
-
-        text_query_vec = self.text_embedder.embed_query(question)
-        vision_query_vec = self._build_vision_query_vector(question, query_image_path)
-
+        text_query_vec: list[float],
+        vision_query_vec: list[float],
+        per_modality_k: int,
+        mode: RetrievalMode,
+        lexical_top_k: int,
+    ) -> list[RetrievalHit]:
         text_hits = self.store.query(
             target_collection,
             Modality.TEXT.value,
@@ -312,33 +335,99 @@ class MultimodalRAG:
         )
 
         if mode == "dense_only":
-            final_hits = self._diversify_hits(dense_fused)
-        else:
-            lexical_hits = self.lexical_index.search(
-                target_collection,
-                question,
-                top_k=self.settings.retrieval_top_k_lexical,
+            return self._diversify_hits(dense_fused)
+
+        lexical_hits = self.lexical_index.search(
+            target_collection,
+            question,
+            top_k=lexical_top_k,
+        )
+        hybrid_fused = reciprocal_rank_fusion(
+            [text_hits, table_hits, image_hits, lexical_hits],
+            k=self.settings.retrieval_rrf_k,
+            weights=[
+                self.settings.retrieval_rrf_weight_text,
+                self.settings.retrieval_rrf_weight_table,
+                self.settings.retrieval_rrf_weight_image,
+                self.settings.retrieval_rrf_weight_lexical,
+            ],
+        )
+        if mode == "hybrid":
+            return self._diversify_hits(hybrid_fused)
+
+        rerank_pool = hybrid_fused[: self.settings.retrieval_rerank_candidates]
+        reranked = self.reranker.rerank(
+            question,
+            rerank_pool,
+            top_k=self.settings.max_context_chunks,
+        )
+        return self._diversify_hits(reranked)
+
+    def query(
+        self,
+        question: str,
+        collection: str | None = None,
+        top_k: int | None = None,
+        query_image_path: Path | None = None,
+        retrieval_mode: str | None = None,
+        tenant_id: str | None = None,
+    ) -> QueryAnswer:
+        target_collection = self._scoped_collection(collection, tenant_id)
+        per_modality_k = top_k or self.settings.retrieval_top_k_per_modality
+        initial_mode = self._resolve_retrieval_mode(retrieval_mode, self._default_retrieval_mode())
+
+        text_query_vec = self.text_embedder.embed_query(question)
+        vision_query_vec = self._build_vision_query_vector(question, query_image_path)
+
+        initial_hits = self._retrieve_hits(
+            target_collection=target_collection,
+            question=question,
+            text_query_vec=text_query_vec,
+            vision_query_vec=vision_query_vec,
+            per_modality_k=per_modality_k,
+            mode=initial_mode,
+            lexical_top_k=self.settings.retrieval_top_k_lexical,
+        )
+
+        final_hits = initial_hits
+        final_mode = initial_mode
+        corrected = False
+
+        can_auto_correct = self.settings.retrieval_auto_correct_enabled and retrieval_mode is None
+        if can_auto_correct and self._needs_auto_correction(initial_hits):
+            corrected_mode = self.settings.retrieval_auto_correct_target_mode
+            corrected_per_modality_k = min(
+                50,
+                max(
+                    per_modality_k,
+                    int(round(per_modality_k * self.settings.retrieval_auto_correct_top_k_multiplier)),
+                ),
             )
-            hybrid_fused = reciprocal_rank_fusion(
-                [text_hits, table_hits, image_hits, lexical_hits],
-                k=self.settings.retrieval_rrf_k,
-                weights=[
-                    self.settings.retrieval_rrf_weight_text,
-                    self.settings.retrieval_rrf_weight_table,
-                    self.settings.retrieval_rrf_weight_image,
-                    self.settings.retrieval_rrf_weight_lexical,
-                ],
+            corrected_lexical_top_k = min(
+                200,
+                max(
+                    self.settings.retrieval_top_k_lexical,
+                    int(
+                        round(
+                            self.settings.retrieval_top_k_lexical
+                            * self.settings.retrieval_auto_correct_lexical_multiplier
+                        )
+                    ),
+                ),
             )
-            if mode == "hybrid":
-                final_hits = self._diversify_hits(hybrid_fused)
-            else:
-                rerank_pool = hybrid_fused[: self.settings.retrieval_rerank_candidates]
-                reranked = self.reranker.rerank(
-                    question,
-                    rerank_pool,
-                    top_k=self.settings.max_context_chunks,
-                )
-                final_hits = self._diversify_hits(reranked)
+            corrected_hits = self._retrieve_hits(
+                target_collection=target_collection,
+                question=question,
+                text_query_vec=text_query_vec,
+                vision_query_vec=vision_query_vec,
+                per_modality_k=corrected_per_modality_k,
+                mode=corrected_mode,
+                lexical_top_k=corrected_lexical_top_k,
+            )
+            if self._quality_tuple(corrected_hits) > self._quality_tuple(initial_hits):
+                final_hits = corrected_hits
+                final_mode = corrected_mode
+                corrected = True
 
         answer = self.synthesizer.generate(question, final_hits)
         citations = self._build_citations(final_hits)
@@ -346,5 +435,13 @@ class MultimodalRAG:
             answer=answer,
             hits=final_hits,
             citations=citations,
-            retrieval_mode=mode,
+            retrieval_mode=final_mode,
+            corrected=corrected,
+            retrieval_diagnostics={
+                "initial_mode": initial_mode,
+                "final_mode": final_mode,
+                "initial_quality": self._quality_stats(initial_hits),
+                "final_quality": self._quality_stats(final_hits),
+                "auto_correction_enabled": can_auto_correct,
+            },
         )

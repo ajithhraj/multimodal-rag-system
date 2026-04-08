@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -45,4 +45,6 @@ class QueryResponse(BaseModel):
     sources: list[SourceItem]
     citations: list[CitationItem]
     retrieval_mode: str | None = None
+    corrected: bool = False
+    retrieval_diagnostics: dict[str, Any] = Field(default_factory=dict)
     latency_ms: float | None = None

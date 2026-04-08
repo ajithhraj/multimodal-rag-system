@@ -25,6 +25,7 @@ It ships with:
 - Hybrid retrieval: dense vector search + lexical BM25
 - Reciprocal Rank Fusion (RRF) for robust ranking
 - Weighted RRF controls to tune text/table/image/lexical influence
+- Adaptive corrective retrieval fallback for low-coverage first-pass results
 - Optional cross-encoder reranker for precision
 - Result diversification (near-duplicate suppression + per-source balancing)
 - Citation-rich answers (`source`, `modality`, `page`, `excerpt`)
@@ -96,6 +97,8 @@ docker compose up --build
 - `sources` (retrieved chunks + score)
 - `citations` (source file, modality, page number, excerpt)
 - `retrieval_mode` (effective mode used by the engine)
+- `corrected` (whether fallback corrective retrieval was applied)
+- `retrieval_diagnostics` (initial/final retrieval quality stats)
 - `latency_ms` (request retrieval+generation time)
 - accepts optional `retrieval_mode` (`dense_only`, `hybrid`, `hybrid_rerank`)
 
@@ -207,6 +210,13 @@ Important env variables:
 - `MMRAG_RETRIEVAL_ENABLE_RESULT_DIVERSITY`
 - `MMRAG_RETRIEVAL_MAX_CHUNKS_PER_SOURCE`
 - `MMRAG_RETRIEVAL_DUPLICATE_SIMILARITY_THRESHOLD`
+- `MMRAG_RETRIEVAL_AUTO_CORRECT_ENABLED`
+- `MMRAG_RETRIEVAL_AUTO_CORRECT_MIN_HITS`
+- `MMRAG_RETRIEVAL_AUTO_CORRECT_MIN_UNIQUE_SOURCES`
+- `MMRAG_RETRIEVAL_AUTO_CORRECT_MIN_UNIQUE_MODALITIES`
+- `MMRAG_RETRIEVAL_AUTO_CORRECT_TARGET_MODE`
+- `MMRAG_RETRIEVAL_AUTO_CORRECT_TOP_K_MULTIPLIER`
+- `MMRAG_RETRIEVAL_AUTO_CORRECT_LEXICAL_MULTIPLIER`
 - `MMRAG_AUTH_ENABLED`
 - `MMRAG_AUTH_API_KEY_HEADER`
 - `MMRAG_AUTH_TENANT_HEADER`
