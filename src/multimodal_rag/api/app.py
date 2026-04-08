@@ -5,6 +5,8 @@ from time import perf_counter
 from typing import Literal
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
+import orjson
 
 from multimodal_rag.api.deps import get_engine, resolve_tenant_id
 from multimodal_rag.api.schemas import (
@@ -20,6 +22,18 @@ from multimodal_rag.engine import MultimodalRAG
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Multimodal RAG API", version="0.1.0")
+
+    def _sse_event(event: str, payload: dict) -> str:
+        json_payload = orjson.dumps(payload).decode("utf-8")
+        return f"event: {event}\ndata: {json_payload}\n\n"
+
+    def _answer_chunks(answer: str, chunk_size: int = 64):
+        clean = answer or ""
+        if not clean:
+            yield ""
+            return
+        for index in range(0, len(clean), chunk_size):
+            yield clean[index : index + chunk_size]
 
     def to_query_response(result, latency_ms: float) -> QueryResponse:
         return QueryResponse(
@@ -106,6 +120,49 @@ def create_app() -> FastAPI:
         )
         latency_ms = (perf_counter() - start) * 1000.0
         return to_query_response(result, latency_ms=latency_ms)
+
+    @app.post("/query-stream")
+    def query_stream(
+        payload: QueryRequest,
+        tenant_id: str = Depends(resolve_tenant_id),
+        engine: MultimodalRAG = Depends(get_engine),
+    ) -> StreamingResponse:
+        start = perf_counter()
+        result = engine.query(
+            question=payload.question,
+            collection=payload.collection,
+            top_k=payload.top_k,
+            retrieval_mode=payload.retrieval_mode,
+            tenant_id=tenant_id,
+        )
+        latency_ms = (perf_counter() - start) * 1000.0
+        response = to_query_response(result, latency_ms=latency_ms)
+
+        def stream():
+            yield _sse_event(
+                "meta",
+                {
+                    "retrieval_mode": response.retrieval_mode,
+                    "corrected": response.corrected,
+                    "latency_ms": response.latency_ms,
+                },
+            )
+            for index, delta in enumerate(_answer_chunks(response.answer), start=1):
+                yield _sse_event("token", {"index": index, "delta": delta})
+            yield _sse_event(
+                "citations",
+                {"citations": [citation.model_dump() for citation in response.citations]},
+            )
+            yield _sse_event(
+                "done",
+                {
+                    "answer": response.answer,
+                    "source_count": len(response.sources),
+                    "citation_count": len(response.citations),
+                },
+            )
+
+        return StreamingResponse(stream(), media_type="text/event-stream")
 
     @app.post("/query-multimodal", response_model=QueryResponse)
     async def query_multimodal(

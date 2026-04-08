@@ -112,6 +112,22 @@ def test_query_endpoint_passes_retrieval_mode(tmp_path):
     assert engine.last_retrieval_mode == "dense_only"
 
 
+def test_query_stream_endpoint_emits_sse_events(tmp_path):
+    settings = _build_settings(tmp_path)
+    engine = StubEngine(settings)
+    client = _build_client(engine)
+
+    response = client.post("/query-stream", json={"question": "hello"})
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    body = response.text
+    assert "event: meta" in body
+    assert "event: token" in body
+    assert "event: citations" in body
+    assert "event: done" in body
+    assert "stub:hello" in body
+
+
 def test_query_multimodal_endpoint_with_image(tmp_path):
     settings = _build_settings(tmp_path)
     engine = StubEngine(settings)

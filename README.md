@@ -90,6 +90,7 @@ docker compose up --build
 - `POST /ingest-paths`
 - `POST /ingest-files`
 - `POST /query`
+- `POST /query-stream` (SSE stream: meta, token deltas, citations, done)
 - `POST /query-multimodal` (multipart: question + optional image)
 
 `POST /query` returns:
