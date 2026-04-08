@@ -64,6 +64,25 @@ class LexicalIndex:
         self._cache.pop(collection, None)
         return len(chunks)
 
+    def delete_by_source(self, collection: str, source_paths: list[str]) -> int:
+        if not source_paths:
+            return 0
+
+        path = self._index_path(collection)
+        if not path.exists():
+            return 0
+
+        payload = orjson.loads(path.read_bytes())
+        source_set = set(source_paths)
+        kept = [item for item in payload if str(item.get("source_path", "")) not in source_set]
+        removed = len(payload) - len(kept)
+        if removed <= 0:
+            return 0
+
+        path.write_bytes(orjson.dumps(kept))
+        self._cache.pop(collection, None)
+        return removed
+
     def _load_state(self, collection: str) -> _LexicalState:
         path = self._index_path(collection)
         if not path.exists():

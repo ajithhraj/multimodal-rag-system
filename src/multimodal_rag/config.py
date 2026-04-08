@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     retrieval_enable_reranker: bool = False
     retrieval_reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     retrieval_rerank_candidates: int = Field(default=20, ge=1, le=200)
+    retrieval_enable_result_diversity: bool = True
+    retrieval_max_chunks_per_source: int = Field(default=3, ge=1, le=20)
+    retrieval_duplicate_similarity_threshold: float = Field(default=0.9, ge=0.5, le=1.0)
 
     auth_enabled: bool = False
     auth_api_key_header: str = "X-API-Key"

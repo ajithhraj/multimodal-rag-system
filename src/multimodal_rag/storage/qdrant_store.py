@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import uuid
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
@@ -62,7 +61,7 @@ class QdrantStore(VectorStore):
         for vector, chunk in zip(vectors, chunks, strict=False):
             points.append(
                 qm.PointStruct(
-                    id=str(uuid.uuid4()),
+                    id=chunk.chunk_id,
                     vector=vector,
                     payload=chunk.to_payload(),
                 )
@@ -100,3 +99,50 @@ class QdrantStore(VectorStore):
                 )
             )
         return hits
+
+    def delete_by_source(
+        self,
+        collection: str,
+        modality: str,
+        source_paths: list[str],
+    ) -> int:
+        if not source_paths:
+            return 0
+
+        name = self._collection_name(collection, modality)
+        if not self.client.collection_exists(name):
+            return 0
+
+        source_set = set(source_paths)
+        point_ids: list[str | int] = []
+        offset: str | int | None = None
+        while True:
+            records, next_offset = self.client.scroll(
+                collection_name=name,
+                with_payload=True,
+                with_vectors=False,
+                limit=512,
+                offset=offset,
+            )
+            if not records:
+                break
+
+            for record in records:
+                payload = record.payload or {}
+                source_path = str(payload.get("source_path", ""))
+                if source_path in source_set:
+                    point_ids.append(record.id)
+
+            if next_offset is None:
+                break
+            offset = next_offset
+
+        if not point_ids:
+            return 0
+
+        self.client.delete(
+            collection_name=name,
+            points_selector=qm.PointIdsList(points=point_ids),
+            wait=True,
+        )
+        return len(point_ids)

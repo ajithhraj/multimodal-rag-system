@@ -25,10 +25,12 @@ It ships with:
 - Hybrid retrieval: dense vector search + lexical BM25
 - Reciprocal Rank Fusion (RRF) for robust ranking
 - Optional cross-encoder reranker for precision
+- Result diversification (near-duplicate suppression + per-source balancing)
 - Citation-rich answers (`source`, `modality`, `page`, `excerpt`)
 - Pluggable vector backends (`faiss` and `qdrant`)
 - Layout-aware PDF ingestion with table-region text dedup
 - Adaptive chunk sizing by section style (narrative/procedural/table-like)
+- Idempotent source refresh on re-ingest (no duplicate chunk buildup)
 
 ## System Architecture
 
@@ -191,6 +193,9 @@ Important env variables:
 - `MMRAG_RETRIEVAL_ENABLE_RERANKER`
 - `MMRAG_RETRIEVAL_RERANKER_MODEL`
 - `MMRAG_RETRIEVAL_RERANK_CANDIDATES`
+- `MMRAG_RETRIEVAL_ENABLE_RESULT_DIVERSITY`
+- `MMRAG_RETRIEVAL_MAX_CHUNKS_PER_SOURCE`
+- `MMRAG_RETRIEVAL_DUPLICATE_SIMILARITY_THRESHOLD`
 - `MMRAG_AUTH_ENABLED`
 - `MMRAG_AUTH_API_KEY_HEADER`
 - `MMRAG_AUTH_TENANT_HEADER`

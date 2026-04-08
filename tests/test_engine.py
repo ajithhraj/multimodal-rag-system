@@ -25,6 +25,18 @@ class FakeStore(VectorStore):
         key = self._key(collection, modality)
         return self._items.get(key, [])[:top_k]
 
+    def delete_by_source(self, collection: str, modality: str, source_paths):  # type: ignore[override]
+        key = self._key(collection, modality)
+        existing = self._items.get(key, [])
+        if not existing:
+            return 0
+
+        source_set = set(source_paths)
+        kept = [hit for hit in existing if hit.chunk.source_path not in source_set]
+        removed = len(existing) - len(kept)
+        self._items[key] = kept
+        return removed
+
 
 class DummyEmbedder:
     def embed_documents(self, texts):
@@ -167,3 +179,96 @@ def test_engine_scopes_queries_by_tenant(tmp_path):
     assert len(result_b.hits) == 1
     assert result_a.hits[0].chunk.chunk_id == "tenant-a-1"
     assert result_b.hits[0].chunk.chunk_id == "tenant-b-1"
+
+
+def test_engine_ingest_refreshes_source_without_duplicates(tmp_path, monkeypatch):
+    settings = Settings(
+        storage_dir=Path(tmp_path),
+        retrieval_top_k_per_modality=2,
+        max_context_chunks=5,
+        retrieval_enable_reranker=False,
+    )
+    store = FakeStore()
+    engine = MultimodalRAG(settings=settings, store=store)
+    engine.text_embedder = DummyEmbedder()  # type: ignore[assignment]
+    engine.vision_embedder = DummyVisionEmbedder()  # type: ignore[assignment]
+    engine.synthesizer = DummySynthesizer()  # type: ignore[assignment]
+
+    target_file = Path(tmp_path) / "doc.pdf"
+    target_file.write_bytes(b"fake")
+
+    first_pass = [
+        Chunk("doc-text-1", str(target_file), Modality.TEXT, "Old content"),
+        Chunk("doc-table-1", str(target_file), Modality.TABLE, "Old table"),
+    ]
+    second_pass = [
+        Chunk("doc-text-1", str(target_file), Modality.TEXT, "Updated content"),
+    ]
+    ingestion_passes = [first_pass, second_pass]
+
+    monkeypatch.setattr("multimodal_rag.engine.discover_files", lambda _: [target_file])
+
+    def fake_ingest_files(paths, _settings):
+        _ = paths
+        return ingestion_passes.pop(0)
+
+    monkeypatch.setattr("multimodal_rag.engine.ingest_files", fake_ingest_files)
+
+    engine.ingest_paths([target_file])
+    engine.ingest_paths([target_file])
+
+    result = engine.query("content")
+    assert len(result.hits) == 1
+    assert result.hits[0].chunk.content == "Updated content"
+
+
+def test_engine_query_applies_per_source_diversity_cap(tmp_path):
+    settings = Settings(
+        storage_dir=Path(tmp_path),
+        retrieval_top_k_per_modality=5,
+        max_context_chunks=5,
+        retrieval_enable_reranker=False,
+        retrieval_max_chunks_per_source=1,
+        retrieval_duplicate_similarity_threshold=0.95,
+    )
+    store = FakeStore()
+    engine = MultimodalRAG(settings=settings, store=store)
+    engine.text_embedder = DummyEmbedder()  # type: ignore[assignment]
+    engine.vision_embedder = DummyVisionEmbedder()  # type: ignore[assignment]
+    engine.synthesizer = DummySynthesizer()  # type: ignore[assignment]
+
+    source_a_hit_1 = Chunk("a-1", "docs/a.pdf", Modality.TEXT, "A first section")
+    source_a_hit_2 = Chunk("a-2", "docs/a.pdf", Modality.TEXT, "A second section")
+    source_b_hit = Chunk("b-1", "docs/b.pdf", Modality.TEXT, "B section")
+    scoped_collection = engine._scoped_collection(None, None)
+    store.upsert(scoped_collection, "text", [[1, 0], [0.95, 0.05], [0.9, 0.1]], [source_a_hit_1, source_a_hit_2, source_b_hit])
+
+    result = engine.query("section", retrieval_mode="dense_only")
+    assert len(result.hits) == 2
+    assert {hit.chunk.chunk_id for hit in result.hits} == {"a-1", "b-1"}
+
+
+def test_engine_query_deduplicates_near_identical_context(tmp_path):
+    settings = Settings(
+        storage_dir=Path(tmp_path),
+        retrieval_top_k_per_modality=5,
+        max_context_chunks=5,
+        retrieval_enable_reranker=False,
+        retrieval_max_chunks_per_source=3,
+        retrieval_duplicate_similarity_threshold=0.8,
+    )
+    store = FakeStore()
+    engine = MultimodalRAG(settings=settings, store=store)
+    engine.text_embedder = DummyEmbedder()  # type: ignore[assignment]
+    engine.vision_embedder = DummyVisionEmbedder()  # type: ignore[assignment]
+    engine.synthesizer = DummySynthesizer()  # type: ignore[assignment]
+
+    duplicate_1 = Chunk("dup-1", "docs/a.pdf", Modality.TEXT, "Revenue grew 25 percent year over year")
+    duplicate_2 = Chunk("dup-2", "docs/b.pdf", Modality.TEXT, "Revenue grew 25 percent year over year")
+    distinct = Chunk("distinct-1", "docs/c.pdf", Modality.TEXT, "Operating margin was 12 percent")
+    scoped_collection = engine._scoped_collection(None, None)
+    store.upsert(scoped_collection, "text", [[1, 0], [0.99, 0.01], [0.8, 0.2]], [duplicate_1, duplicate_2, distinct])
+
+    result = engine.query("revenue and margin", retrieval_mode="dense_only")
+    assert len(result.hits) == 2
+    assert {hit.chunk.chunk_id for hit in result.hits} == {"dup-1", "distinct-1"}

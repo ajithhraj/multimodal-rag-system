@@ -15,6 +15,7 @@ from multimodal_rag.storage.base import VectorStore
 from multimodal_rag.storage.factory import create_vector_store
 
 RetrievalMode = Literal["dense_only", "hybrid", "hybrid_rerank"]
+TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 
 
 class MultimodalRAG:
@@ -64,6 +65,60 @@ class MultimodalRAG:
         return "hybrid"
 
     @staticmethod
+    def _content_token_set(text: str) -> set[str]:
+        return {m.group(0).lower() for m in TOKEN_RE.finditer(text)}
+
+    @staticmethod
+    def _jaccard_similarity(left: set[str], right: set[str]) -> float:
+        if not left or not right:
+            return 0.0
+        union = left | right
+        if not union:
+            return 0.0
+        return len(left & right) / len(union)
+
+    def _diversify_hits(self, hits: list[RetrievalHit]) -> list[RetrievalHit]:
+        if not hits:
+            return []
+
+        max_context_chunks = self.settings.max_context_chunks
+        if not self.settings.retrieval_enable_result_diversity:
+            return hits[:max_context_chunks]
+
+        per_source_cap = self.settings.retrieval_max_chunks_per_source
+        duplicate_threshold = self.settings.retrieval_duplicate_similarity_threshold
+
+        source_counts: dict[str, int] = {}
+        kept: list[RetrievalHit] = []
+        kept_token_sets: list[set[str]] = []
+
+        for hit in hits:
+            source = hit.chunk.source_path
+            source_count = source_counts.get(source, 0)
+            if source_count >= per_source_cap:
+                continue
+
+            candidate_tokens = self._content_token_set(hit.chunk.content)
+            is_duplicate = False
+            if candidate_tokens:
+                for existing_tokens in kept_token_sets:
+                    if self._jaccard_similarity(candidate_tokens, existing_tokens) >= duplicate_threshold:
+                        is_duplicate = True
+                        break
+            if is_duplicate:
+                continue
+
+            kept.append(hit)
+            kept_token_sets.append(candidate_tokens)
+            source_counts[source] = source_count + 1
+            if len(kept) >= max_context_chunks:
+                break
+
+        if kept:
+            return kept
+        return hits[:max_context_chunks]
+
+    @staticmethod
     def _resolve_retrieval_mode(retrieval_mode: str | None, default_mode: RetrievalMode) -> RetrievalMode:
         allowed: set[str] = {"dense_only", "hybrid", "hybrid_rerank"}
         mode = retrieval_mode or default_mode
@@ -82,6 +137,16 @@ class MultimodalRAG:
         for raw in raw_paths:
             files.extend(discover_files(raw))
         files = sorted({path.resolve() for path in files})
+        source_paths = [str(path) for path in files]
+
+        # Idempotent source refresh: remove previous chunks for these files first.
+        for modality in (Modality.TEXT, Modality.TABLE, Modality.IMAGE):
+            self.store.delete_by_source(
+                target_collection,
+                modality.value,
+                source_paths,
+            )
+        self.lexical_index.delete_by_source(target_collection, source_paths)
 
         chunks = ingest_files(files, self.settings)
         grouped = self._group_by_modality(chunks)
@@ -198,7 +263,7 @@ class MultimodalRAG:
         )
 
         if mode == "dense_only":
-            final_hits = dense_fused[: self.settings.max_context_chunks]
+            final_hits = self._diversify_hits(dense_fused)
         else:
             lexical_hits = self.lexical_index.search(
                 target_collection,
@@ -210,14 +275,15 @@ class MultimodalRAG:
                 k=self.settings.retrieval_rrf_k,
             )
             if mode == "hybrid":
-                final_hits = hybrid_fused[: self.settings.max_context_chunks]
+                final_hits = self._diversify_hits(hybrid_fused)
             else:
                 rerank_pool = hybrid_fused[: self.settings.retrieval_rerank_candidates]
-                final_hits = self.reranker.rerank(
+                reranked = self.reranker.rerank(
                     question,
                     rerank_pool,
                     top_k=self.settings.max_context_chunks,
                 )
+                final_hits = self._diversify_hits(reranked)
 
         answer = self.synthesizer.generate(question, final_hits)
         citations = self._build_citations(final_hits)

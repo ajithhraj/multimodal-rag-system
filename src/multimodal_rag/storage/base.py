@@ -25,3 +25,12 @@ class VectorStore(ABC):
         top_k: int,
     ) -> list[RetrievalHit]:
         raise NotImplementedError
+
+    @abstractmethod
+    def delete_by_source(
+        self,
+        collection: str,
+        modality: str,
+        source_paths: list[str],
+    ) -> int:
+        raise NotImplementedError
