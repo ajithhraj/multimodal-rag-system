@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 
-from multimodal_rag.api.deps import get_engine
+from multimodal_rag.api.deps import get_engine, resolve_tenant_id
 from multimodal_rag.api.schemas import (
     CitationItem,
     IngestPathsRequest,
@@ -50,15 +50,21 @@ def create_app() -> FastAPI:
     @app.post("/ingest-paths", response_model=IngestResponse)
     def ingest_paths(
         payload: IngestPathsRequest,
+        tenant_id: str = Depends(resolve_tenant_id),
         engine: MultimodalRAG = Depends(get_engine),
     ) -> IngestResponse:
-        stats = engine.ingest_paths([Path(path) for path in payload.paths], collection=payload.collection)
+        stats = engine.ingest_paths(
+            [Path(path) for path in payload.paths],
+            collection=payload.collection,
+            tenant_id=tenant_id,
+        )
         return IngestResponse(**stats)
 
     @app.post("/ingest-files", response_model=IngestResponse)
     async def ingest_files(
         files: list[UploadFile] = File(...),
         collection: str | None = None,
+        tenant_id: str = Depends(resolve_tenant_id),
         engine: MultimodalRAG = Depends(get_engine),
     ) -> IngestResponse:
         upload_dir = engine.settings.storage_dir / "tmp_uploads"
@@ -71,18 +77,24 @@ def create_app() -> FastAPI:
             target.write_bytes(content)
             saved_paths.append(target)
 
-        stats = engine.ingest_paths(saved_paths, collection=collection)
+        stats = engine.ingest_paths(
+            saved_paths,
+            collection=collection,
+            tenant_id=tenant_id,
+        )
         return IngestResponse(**stats)
 
     @app.post("/query", response_model=QueryResponse)
     def query(
         payload: QueryRequest,
+        tenant_id: str = Depends(resolve_tenant_id),
         engine: MultimodalRAG = Depends(get_engine),
     ) -> QueryResponse:
         result = engine.query(
             question=payload.question,
             collection=payload.collection,
             top_k=payload.top_k,
+            tenant_id=tenant_id,
         )
         return to_query_response(result)
 
@@ -92,6 +104,7 @@ def create_app() -> FastAPI:
         image: UploadFile | None = File(default=None),
         collection: str | None = Form(default=None),
         top_k: int | None = Form(default=None),
+        tenant_id: str = Depends(resolve_tenant_id),
         engine: MultimodalRAG = Depends(get_engine),
     ) -> QueryResponse:
         prompt = question.strip()
@@ -115,6 +128,7 @@ def create_app() -> FastAPI:
             collection=collection,
             top_k=top_k,
             query_image_path=query_image_path,
+            tenant_id=tenant_id,
         )
         return to_query_response(result)
 

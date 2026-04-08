@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
+import re
 from typing import Iterable, Literal
 
 from multimodal_rag.config import Settings, get_settings
@@ -36,6 +37,21 @@ class MultimodalRAG:
     def _resolve_collection(self, collection: str | None) -> str:
         return collection or self.settings.collection
 
+    def _resolve_tenant(self, tenant_id: str | None) -> str:
+        raw = tenant_id or self.settings.default_tenant
+        return self.settings.normalize_tenant_id(raw)
+
+    @staticmethod
+    def _safe_collection_name(raw: str) -> str:
+        cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "-", raw.strip().lower())
+        cleaned = cleaned.strip("-_")
+        return cleaned or "default"
+
+    def _scoped_collection(self, collection: str | None, tenant_id: str | None) -> str:
+        tenant = self._resolve_tenant(tenant_id)
+        base = self._safe_collection_name(self._resolve_collection(collection))
+        return f"tenant-{tenant}__{base}"
+
     def _group_by_modality(self, chunks: Iterable[Chunk]) -> dict[Modality, list[Chunk]]:
         grouped: dict[Modality, list[Chunk]] = defaultdict(list)
         for chunk in chunks:
@@ -55,8 +71,13 @@ class MultimodalRAG:
             raise ValueError(f"Unsupported retrieval_mode '{mode}'. Allowed: dense_only, hybrid, hybrid_rerank")
         return mode  # type: ignore[return-value]
 
-    def ingest_paths(self, raw_paths: list[Path], collection: str | None = None) -> dict[str, int]:
-        target_collection = self._resolve_collection(collection)
+    def ingest_paths(
+        self,
+        raw_paths: list[Path],
+        collection: str | None = None,
+        tenant_id: str | None = None,
+    ) -> dict[str, int]:
+        target_collection = self._scoped_collection(collection, tenant_id)
         files: list[Path] = []
         for raw in raw_paths:
             files.extend(discover_files(raw))
@@ -143,8 +164,9 @@ class MultimodalRAG:
         top_k: int | None = None,
         query_image_path: Path | None = None,
         retrieval_mode: str | None = None,
+        tenant_id: str | None = None,
     ) -> QueryAnswer:
-        target_collection = self._resolve_collection(collection)
+        target_collection = self._scoped_collection(collection, tenant_id)
         per_modality_k = top_k or self.settings.retrieval_top_k_per_modality
         mode = self._resolve_retrieval_mode(retrieval_mode, self._default_retrieval_mode())
 

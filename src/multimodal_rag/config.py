@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+import re
 from typing import Literal
 
 from pydantic import Field
@@ -16,6 +17,7 @@ class Settings(BaseSettings):
     app_name: str = "Multimodal RAG System"
     storage_dir: Path = Path(".rag_store")
     collection: str = "default"
+    default_tenant: str = "public"
     vector_backend: Literal["faiss", "qdrant"] = "faiss"
 
     chunk_size: int = 900
@@ -46,6 +48,38 @@ class Settings(BaseSettings):
     retrieval_enable_reranker: bool = False
     retrieval_reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     retrieval_rerank_candidates: int = Field(default=20, ge=1, le=200)
+
+    auth_enabled: bool = False
+    auth_api_key_header: str = "X-API-Key"
+    auth_tenant_header: str = "X-Tenant-ID"
+    # Format: tenant_a:key_a,tenant_b:key_b
+    auth_tenant_api_keys: str | None = None
+
+    @staticmethod
+    def normalize_tenant_id(raw: str) -> str:
+        tenant = re.sub(r"[^a-zA-Z0-9_-]+", "-", raw.strip().lower())
+        tenant = tenant.strip("-_")
+        return tenant or "public"
+
+    def parse_tenant_key_map(self) -> dict[str, str]:
+        value = (self.auth_tenant_api_keys or "").strip()
+        if not value:
+            return {}
+
+        mapping: dict[str, str] = {}
+        for item in value.split(","):
+            pair = item.strip()
+            if not pair:
+                continue
+            if ":" not in pair:
+                continue
+            tenant_raw, key_raw = pair.split(":", 1)
+            tenant = self.normalize_tenant_id(tenant_raw)
+            key = key_raw.strip()
+            if not key:
+                continue
+            mapping[tenant] = key
+        return mapping
 
 
 @lru_cache(maxsize=1)

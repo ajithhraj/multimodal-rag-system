@@ -32,11 +32,12 @@ def _build_engine(backend: Literal["faiss", "qdrant"] | None = None) -> Multimod
 @app.command()
 def ingest(
     path: Path = typer.Argument(..., help="File or directory path to ingest."),
+    tenant: str | None = typer.Option(None, help="Tenant namespace for indexing."),
     collection: str | None = typer.Option(None, help="Collection name."),
     backend: Literal["faiss", "qdrant"] | None = typer.Option(None, help="Vector backend override."),
 ) -> None:
     engine = _build_engine(backend)
-    stats = engine.ingest_paths([path], collection=collection)
+    stats = engine.ingest_paths([path], collection=collection, tenant_id=tenant)
     typer.echo(
         f"Ingested files={stats['files']} chunks={stats['chunks']} "
         f"text={stats['text']} table={stats['table']} image={stats['image']}"
@@ -47,6 +48,7 @@ def ingest(
 def ask(
     question: str = typer.Argument(..., help="Question for retrieval + generation."),
     image: Path | None = typer.Option(None, help="Optional query image path for multimodal retrieval."),
+    tenant: str | None = typer.Option(None, help="Tenant namespace for retrieval."),
     collection: str | None = typer.Option(None, help="Collection name."),
     top_k: int | None = typer.Option(None, min=1, max=50, help="Top-k per modality."),
     backend: Literal["faiss", "qdrant"] | None = typer.Option(None, help="Vector backend override."),
@@ -59,6 +61,7 @@ def ask(
         collection=collection,
         top_k=top_k,
         query_image_path=image,
+        tenant_id=tenant,
     )
     typer.echo(result.answer)
     if result.citations:
@@ -94,6 +97,7 @@ def evaluate(
         "--ingest-path",
         help="Optional corpus path to ingest before evaluation. Repeat for multiple paths.",
     ),
+    tenant: str | None = typer.Option(None, help="Tenant namespace for ingest + retrieval during eval."),
     collection: str | None = typer.Option(None, help="Collection name."),
     k_values: str = typer.Option("1,3,5", help="Comma-separated K values, for example: 1,3,5,10"),
     ablation: bool = typer.Option(
@@ -117,7 +121,11 @@ def evaluate(
         missing = [str(path) for path in ingest_path if not path.exists()]
         if missing:
             raise typer.BadParameter(f"Ingest path(s) not found: {', '.join(missing)}")
-        stats = engine.ingest_paths(list(ingest_path), collection=collection)
+        stats = engine.ingest_paths(
+            list(ingest_path),
+            collection=collection,
+            tenant_id=tenant,
+        )
         typer.echo(
             "Pre-ingest completed: "
             f"files={stats['files']} chunks={stats['chunks']} "
@@ -147,6 +155,7 @@ def evaluate(
             cases=cases,
             dataset_path=dataset,
             default_collection=collection,
+            default_tenant=tenant,
             k_values=parsed_k_values,
             modes=modes,
             baseline_mode=baseline_mode,
@@ -157,6 +166,7 @@ def evaluate(
             cases=cases,
             dataset_path=dataset,
             default_collection=collection,
+            default_tenant=tenant,
             k_values=parsed_k_values,
         )
 

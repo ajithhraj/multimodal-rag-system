@@ -64,9 +64,9 @@ copy .env.example .env
 ```
 
 ```bash
-mmrag ingest ./data
-mmrag ask "What are the major metrics shown in the latest PDF tables?"
-mmrag ask "Find charts similar to this trend" --image ./data/query_chart.png
+mmrag ingest ./data --tenant acme
+mmrag ask "What are the major metrics shown in the latest PDF tables?" --tenant acme
+mmrag ask "Find charts similar to this trend" --image ./data/query_chart.png --tenant acme
 mmrag serve --host 0.0.0.0 --port 8000
 ```
 
@@ -95,9 +95,23 @@ Example multimodal query:
 
 ```bash
 curl -X POST http://localhost:8000/query-multimodal \
+  -H "X-Tenant-ID: acme" \
   -F "question=Find similar chart patterns" \
   -F "image=@./data/query_chart.png"
 ```
+
+## Multi-Tenant & API Auth
+
+Tenant scoping is enabled by default across ingestion and retrieval:
+- each tenant writes to an isolated namespaced collection (`tenant-<id>__<collection>`)
+- CLI supports `--tenant` on `ingest`, `ask`, and `eval`
+- REST API uses `X-Tenant-ID` (configurable via `MMRAG_AUTH_TENANT_HEADER`)
+
+Optional API-key auth (recommended for deployments):
+- set `MMRAG_AUTH_ENABLED=true`
+- configure `MMRAG_AUTH_TENANT_API_KEYS` as `tenant_a:key_a,tenant_b:key_b`
+- send the API key header (default `X-API-Key`)
+- when a tenant header is supplied, it must match the tenant bound to the API key
 
 ## Benchmark Section (Portfolio-Friendly)
 
@@ -120,13 +134,13 @@ Suggested evaluation metrics to report:
 Run structured retrieval benchmarks with the built-in evaluator:
 
 ```bash
-mmrag eval ./eval/datasets/starter_eval.jsonl --ingest-path ./data --k-values 1,3,5,10
+mmrag eval ./eval/datasets/starter_eval.jsonl --ingest-path ./data --tenant acme --k-values 1,3,5,10
 ```
 
 Run retrieval strategy ablations:
 
 ```bash
-mmrag eval ./eval/datasets/starter_eval.jsonl --ingest-path ./data --ablation
+mmrag eval ./eval/datasets/starter_eval.jsonl --ingest-path ./data --tenant acme --ablation
 ```
 
 What it reports:
@@ -161,6 +175,7 @@ Important env variables:
 - `MMRAG_VECTOR_BACKEND`
 - `MMRAG_STORAGE_DIR`
 - `MMRAG_COLLECTION`
+- `MMRAG_DEFAULT_TENANT`
 - `MMRAG_CHUNK_SIZE`
 - `MMRAG_CHUNK_OVERLAP`
 - `MMRAG_ADAPTIVE_CHUNKING_ENABLED`
@@ -176,17 +191,21 @@ Important env variables:
 - `MMRAG_RETRIEVAL_ENABLE_RERANKER`
 - `MMRAG_RETRIEVAL_RERANKER_MODEL`
 - `MMRAG_RETRIEVAL_RERANK_CANDIDATES`
+- `MMRAG_AUTH_ENABLED`
+- `MMRAG_AUTH_API_KEY_HEADER`
+- `MMRAG_AUTH_TENANT_HEADER`
+- `MMRAG_AUTH_TENANT_API_KEYS`
 - `MMRAG_QDRANT_URL`
 - `MMRAG_QDRANT_API_KEY`
 - `MMRAG_QDRANT_PATH`
 
 ## CLI
 
-- `mmrag ingest <path>`
-- `mmrag ask <question>`
-- `mmrag ask <question> --image <path-to-image>`
+- `mmrag ingest <path> [--tenant <tenant-id>]`
+- `mmrag ask <question> [--tenant <tenant-id>]`
+- `mmrag ask <question> --image <path-to-image> [--tenant <tenant-id>]`
 - `mmrag serve`
-- `mmrag eval <dataset-path> [--ablation]`
+- `mmrag eval <dataset-path> [--tenant <tenant-id>] [--ablation]`
 
 Run `mmrag --help` for full options.
 

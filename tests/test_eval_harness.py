@@ -14,14 +14,26 @@ from multimodal_rag.models import Citation, Chunk, Modality, QueryAnswer, Retrie
 
 
 class EvalEngineStub:
+    def __init__(self):
+        self.calls: list[dict[str, str | None]] = []
+
     def query(
         self,
         question,
         collection=None,
+        tenant_id=None,
         top_k=None,
         query_image_path=None,
         retrieval_mode=None,
     ):
+        self.calls.append(
+            {
+                "question": question,
+                "collection": collection,
+                "tenant_id": tenant_id,
+                "retrieval_mode": retrieval_mode,
+            }
+        )
         mode = retrieval_mode or "hybrid"
         if question == "q1":
             if mode == "dense_only":
@@ -148,6 +160,7 @@ def test_run_evaluation_metrics():
         dataset_path=Path("eval/datasets/starter_eval.jsonl"),
         default_collection=None,
         k_values=[1, 2],
+        default_tenant="tenant-default",
     )
 
     summary = report.summary
@@ -161,6 +174,8 @@ def test_run_evaluation_metrics():
     assert summary.citation_hit_rate == pytest.approx(0.5)
     assert summary.mean_citation_precision == pytest.approx(0.5)
     assert summary.avg_latency_ms >= 0.0
+    assert engine.calls[0]["tenant_id"] == "tenant-default"
+    assert engine.calls[1]["tenant_id"] == "tenant-default"
 
 
 def test_run_ablation_evaluation_produces_lifts():
@@ -177,6 +192,7 @@ def test_run_ablation_evaluation_produces_lifts():
         k_values=[1, 2],
         modes=["dense_only", "hybrid"],
         baseline_mode="dense_only",
+        default_tenant="tenant-default",
     )
     assert ablation.baseline_mode == "dense_only"
     assert set(ablation.mode_reports.keys()) == {"dense_only", "hybrid"}
@@ -185,3 +201,21 @@ def test_run_ablation_evaluation_produces_lifts():
     assert delta.mode == "hybrid"
     assert delta.mean_mrr_delta is not None
     assert delta.mean_mrr_delta > 0
+
+
+def test_run_evaluation_case_tenant_overrides_default():
+    engine = EvalEngineStub()
+    cases = [
+        EvalCase(case_id="c1", question="q1", tenant_id="tenant-a", expected_chunk_ids=["hit-1"]),
+        EvalCase(case_id="c2", question="q2", expected_source_paths=["table.csv"]),
+    ]
+    _ = run_evaluation(
+        engine=engine,
+        cases=cases,
+        dataset_path=Path("eval/datasets/starter_eval.jsonl"),
+        default_collection="shared",
+        k_values=[1],
+        default_tenant="tenant-default",
+    )
+    assert engine.calls[0]["tenant_id"] == "tenant-a"
+    assert engine.calls[1]["tenant_id"] == "tenant-default"

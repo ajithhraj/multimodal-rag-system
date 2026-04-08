@@ -151,6 +151,7 @@ def run_evaluation(
     dataset_path: Path,
     default_collection: str | None,
     k_values: list[int],
+    default_tenant: str | None = None,
     retrieval_mode: str | None = None,
 ) -> EvaluationReport:
     latencies: list[float] = []
@@ -182,6 +183,7 @@ def run_evaluation(
         result = engine.query(
             question=case.question,
             collection=case.collection or default_collection,
+            tenant_id=case.tenant_id or default_tenant,
             top_k=case.top_k,
             query_image_path=query_image_path,
             retrieval_mode=retrieval_mode,
@@ -293,6 +295,7 @@ def run_ablation_evaluation(
     k_values: list[int],
     modes: list[str],
     baseline_mode: str,
+    default_tenant: str | None = None,
 ) -> AblationReport:
     if baseline_mode not in modes:
         raise ValueError("baseline_mode must be present in ablation modes")
@@ -305,6 +308,7 @@ def run_ablation_evaluation(
             dataset_path=dataset_path,
             default_collection=default_collection,
             k_values=k_values,
+            default_tenant=default_tenant,
             retrieval_mode=mode,
         )
 

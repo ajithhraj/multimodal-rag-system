@@ -10,6 +10,7 @@ class EvalCase(BaseModel):
     question: str = Field(min_length=1)
     query_image_path: str | None = None
     collection: str | None = None
+    tenant_id: str | None = None
     top_k: int | None = Field(default=None, ge=1, le=50)
     expected_chunk_ids: list[str] = Field(default_factory=list)
     expected_source_paths: list[str] = Field(default_factory=list)
