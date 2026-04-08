@@ -431,12 +431,16 @@ class MultimodalRAG:
 
         answer = self.synthesizer.generate(question, final_hits)
         citations = self._build_citations(final_hits)
+        grounded = len(citations) >= self.settings.response_min_citations
+        if self.settings.response_require_citations and not grounded:
+            answer = self.settings.response_ungrounded_fallback_text
         return QueryAnswer(
             answer=answer,
             hits=final_hits,
             citations=citations,
             retrieval_mode=final_mode,
             corrected=corrected,
+            grounded=grounded,
             retrieval_diagnostics={
                 "initial_mode": initial_mode,
                 "final_mode": final_mode,

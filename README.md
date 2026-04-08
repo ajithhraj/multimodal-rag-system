@@ -26,6 +26,7 @@ It ships with:
 - Reciprocal Rank Fusion (RRF) for robust ranking
 - Weighted RRF controls to tune text/table/image/lexical influence
 - Adaptive corrective retrieval fallback for low-coverage first-pass results
+- Optional grounded-answer guardrail with citation minimum and fallback response
 - Optional cross-encoder reranker for precision
 - Result diversification (near-duplicate suppression + per-source balancing)
 - Citation-rich answers (`source`, `modality`, `page`, `excerpt`)
@@ -99,6 +100,7 @@ docker compose up --build
 - `citations` (source file, modality, page number, excerpt)
 - `retrieval_mode` (effective mode used by the engine)
 - `corrected` (whether fallback corrective retrieval was applied)
+- `grounded` (whether citation minimum is satisfied)
 - `retrieval_diagnostics` (initial/final retrieval quality stats)
 - `latency_ms` (request retrieval+generation time)
 - accepts optional `retrieval_mode` (`dense_only`, `hybrid`, `hybrid_rerank`)
@@ -218,6 +220,9 @@ Important env variables:
 - `MMRAG_RETRIEVAL_AUTO_CORRECT_TARGET_MODE`
 - `MMRAG_RETRIEVAL_AUTO_CORRECT_TOP_K_MULTIPLIER`
 - `MMRAG_RETRIEVAL_AUTO_CORRECT_LEXICAL_MULTIPLIER`
+- `MMRAG_RESPONSE_REQUIRE_CITATIONS`
+- `MMRAG_RESPONSE_MIN_CITATIONS`
+- `MMRAG_RESPONSE_UNGROUNDED_FALLBACK_TEXT`
 - `MMRAG_AUTH_ENABLED`
 - `MMRAG_AUTH_API_KEY_HEADER`
 - `MMRAG_AUTH_TENANT_HEADER`

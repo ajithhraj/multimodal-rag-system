@@ -46,5 +46,6 @@ class QueryResponse(BaseModel):
     citations: list[CitationItem]
     retrieval_mode: str | None = None
     corrected: bool = False
+    grounded: bool = True
     retrieval_diagnostics: dict[str, Any] = Field(default_factory=dict)
     latency_ms: float | None = None

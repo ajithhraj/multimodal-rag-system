@@ -89,6 +89,7 @@ def test_query_endpoint(tmp_path):
     assert payload["citations"][0]["page_number"] == 3
     assert payload["retrieval_mode"] == "hybrid"
     assert payload["corrected"] is False
+    assert payload["grounded"] is True
     assert isinstance(payload["retrieval_diagnostics"], dict)
     assert payload["latency_ms"] is not None
     assert payload["latency_ms"] >= 0.0
@@ -109,6 +110,7 @@ def test_query_endpoint_passes_retrieval_mode(tmp_path):
     payload = response.json()
     assert payload["retrieval_mode"] == "hybrid"
     assert payload["corrected"] is False
+    assert payload["grounded"] is True
     assert engine.last_retrieval_mode == "dense_only"
 
 
@@ -146,6 +148,7 @@ def test_query_multimodal_endpoint_with_image(tmp_path):
     assert payload["answer"] == "stub:find similar chart"
     assert payload["retrieval_mode"] == "hybrid"
     assert payload["corrected"] is False
+    assert payload["grounded"] is True
     assert isinstance(payload["retrieval_diagnostics"], dict)
     assert payload["latency_ms"] is not None
     assert payload["latency_ms"] >= 0.0
