@@ -27,6 +27,7 @@ It ships with:
 - Reciprocal Rank Fusion (RRF) for robust ranking
 - Weighted RRF controls to tune text/table/image/lexical influence
 - Adaptive corrective retrieval fallback for low-coverage first-pass results
+- Optional multi-query decomposition for multi-intent questions
 - Optional grounded-answer guardrail with citation minimum and fallback response
 - Optional cross-encoder reranker for precision
 - Result diversification (near-duplicate suppression + per-source balancing)
@@ -214,6 +215,9 @@ Important env variables:
 - `MMRAG_RETRIEVAL_ENABLE_RESULT_DIVERSITY`
 - `MMRAG_RETRIEVAL_MAX_CHUNKS_PER_SOURCE`
 - `MMRAG_RETRIEVAL_DUPLICATE_SIMILARITY_THRESHOLD`
+- `MMRAG_RETRIEVAL_QUERY_EXPANSION_ENABLED`
+- `MMRAG_RETRIEVAL_QUERY_EXPANSION_MAX_VARIANTS`
+- `MMRAG_RETRIEVAL_QUERY_EXPANSION_WEIGHT`
 - `MMRAG_RETRIEVAL_AUTO_CORRECT_ENABLED`
 - `MMRAG_RETRIEVAL_AUTO_CORRECT_MIN_HITS`
 - `MMRAG_RETRIEVAL_AUTO_CORRECT_MIN_UNIQUE_SOURCES`

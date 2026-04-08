@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     retrieval_enable_result_diversity: bool = True
     retrieval_max_chunks_per_source: int = Field(default=3, ge=1, le=20)
     retrieval_duplicate_similarity_threshold: float = Field(default=0.9, ge=0.5, le=1.0)
+    retrieval_query_expansion_enabled: bool = False
+    retrieval_query_expansion_max_variants: int = Field(default=4, ge=1, le=10)
+    retrieval_query_expansion_weight: float = Field(default=0.8, ge=0.0, le=2.0)
     retrieval_auto_correct_enabled: bool = True
     retrieval_auto_correct_min_hits: int = Field(default=3, ge=1, le=20)
     retrieval_auto_correct_min_unique_sources: int = Field(default=2, ge=1, le=20)

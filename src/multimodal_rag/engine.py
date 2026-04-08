@@ -18,6 +18,10 @@ from multimodal_rag.storage.factory import create_vector_store
 
 RetrievalMode = Literal["dense_only", "hybrid", "hybrid_rerank"]
 TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
+LEADING_PROMPT_RE = re.compile(
+    r"^(what|which|who|when|where|why|how)\s+(is|are|was|were|do|does|did|the|a|an)?\s*",
+    flags=re.IGNORECASE,
+)
 
 
 class MultimodalRAG:
@@ -363,6 +367,92 @@ class MultimodalRAG:
         )
         return self._diversify_hits(reranked)
 
+    @staticmethod
+    def _normalize_query_variant(raw: str) -> str:
+        text = raw.strip().strip("?.!,:;")
+        text = LEADING_PROMPT_RE.sub("", text).strip()
+        return text
+
+    def _expand_query_variants(self, question: str) -> list[str]:
+        base = question.strip()
+        if not base:
+            return [question]
+
+        variants = [base]
+        if not self.settings.retrieval_query_expansion_enabled:
+            return variants
+
+        normalized = self._normalize_query_variant(base)
+        if normalized and normalized.lower() != base.lower():
+            variants.append(normalized)
+
+        split_parts = re.split(r"\b(?:and|or|vs|versus)\b|,|;|/|&", normalized, flags=re.IGNORECASE)
+        for part in split_parts:
+            candidate = self._normalize_query_variant(part)
+            if len(candidate.split()) < 2:
+                continue
+            variants.append(candidate)
+
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for variant in variants:
+            key = variant.strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            deduped.append(variant.strip())
+            if len(deduped) >= self.settings.retrieval_query_expansion_max_variants:
+                break
+
+        return deduped or [base]
+
+    def _retrieve_hits_with_variants(
+        self,
+        target_collection: str,
+        question: str,
+        query_image_path: Path | None,
+        primary_vision_query_vec: list[float] | None,
+        per_modality_k: int,
+        mode: RetrievalMode,
+        lexical_top_k: int,
+    ) -> tuple[list[RetrievalHit], list[str]]:
+        variants = self._expand_query_variants(question)
+        if not variants:
+            variants = [question]
+
+        variant_hits: list[list[RetrievalHit]] = []
+        variant_weights: list[float] = []
+        for index, variant in enumerate(variants):
+            text_query_vec = self.text_embedder.embed_query(variant)
+            if index == 0:
+                vision_query_vec = primary_vision_query_vec
+                if vision_query_vec is None:
+                    vision_query_vec = self._build_vision_query_vector(variant, query_image_path)
+            else:
+                vision_query_vec = self.vision_embedder.embed_query(variant)
+
+            hits = self._retrieve_hits(
+                target_collection=target_collection,
+                question=variant,
+                text_query_vec=text_query_vec,
+                vision_query_vec=vision_query_vec,
+                per_modality_k=per_modality_k,
+                mode=mode,
+                lexical_top_k=lexical_top_k,
+            )
+            variant_hits.append(hits)
+            variant_weights.append(1.0 if index == 0 else self.settings.retrieval_query_expansion_weight)
+
+        if len(variant_hits) == 1:
+            return variant_hits[0], variants
+
+        merged = reciprocal_rank_fusion(
+            variant_hits,
+            k=self.settings.retrieval_rrf_k,
+            weights=variant_weights,
+        )
+        return self._diversify_hits(merged), variants
+
     def query(
         self,
         question: str,
@@ -376,14 +466,13 @@ class MultimodalRAG:
         per_modality_k = top_k or self.settings.retrieval_top_k_per_modality
         initial_mode = self._resolve_retrieval_mode(retrieval_mode, self._default_retrieval_mode())
 
-        text_query_vec = self.text_embedder.embed_query(question)
-        vision_query_vec = self._build_vision_query_vector(question, query_image_path)
+        primary_vision_query_vec = self._build_vision_query_vector(question, query_image_path)
 
-        initial_hits = self._retrieve_hits(
+        initial_hits, query_variants = self._retrieve_hits_with_variants(
             target_collection=target_collection,
             question=question,
-            text_query_vec=text_query_vec,
-            vision_query_vec=vision_query_vec,
+            query_image_path=query_image_path,
+            primary_vision_query_vec=primary_vision_query_vec,
             per_modality_k=per_modality_k,
             mode=initial_mode,
             lexical_top_k=self.settings.retrieval_top_k_lexical,
@@ -415,11 +504,11 @@ class MultimodalRAG:
                     ),
                 ),
             )
-            corrected_hits = self._retrieve_hits(
+            corrected_hits, _ = self._retrieve_hits_with_variants(
                 target_collection=target_collection,
                 question=question,
-                text_query_vec=text_query_vec,
-                vision_query_vec=vision_query_vec,
+                query_image_path=query_image_path,
+                primary_vision_query_vec=primary_vision_query_vec,
                 per_modality_k=corrected_per_modality_k,
                 mode=corrected_mode,
                 lexical_top_k=corrected_lexical_top_k,
@@ -447,5 +536,6 @@ class MultimodalRAG:
                 "initial_quality": self._quality_stats(initial_hits),
                 "final_quality": self._quality_stats(final_hits),
                 "auto_correction_enabled": can_auto_correct,
+                "query_variants": query_variants,
             },
         )

@@ -4,6 +4,7 @@ from multimodal_rag.config import Settings
 from multimodal_rag.engine import MultimodalRAG
 from multimodal_rag.models import Chunk, Modality, RetrievalHit
 from multimodal_rag.storage.base import VectorStore
+from multimodal_rag.storage.faiss_store import FaissStore
 
 
 class FakeStore(VectorStore):
@@ -101,6 +102,19 @@ def test_engine_query_returns_fused_hits(tmp_path):
 class EmptyQueryStore(FakeStore):
     def query(self, collection: str, modality: str, query_vector, top_k):  # type: ignore[override]
         return []
+
+
+class QueryAwareEmbedder(DummyEmbedder):
+    def embed_documents(self, texts):
+        return [self.embed_query(text) for text in texts]
+
+    def embed_query(self, text):
+        lowered = text.lower()
+        if "sla" in lowered:
+            return [1.0, 0.0]
+        if "encryption" in lowered:
+            return [0.0, 1.0]
+        return [1.0, 0.0]
 
 
 def test_engine_query_uses_lexical_index_when_dense_empty(tmp_path):
@@ -437,3 +451,58 @@ def test_engine_query_keeps_answer_when_grounded_requirement_is_disabled(tmp_pat
     result = engine.query("no evidence")
     assert result.grounded is False
     assert "answer:no evidence" in result.answer
+
+
+def test_engine_query_expansion_collects_multi_intent_hits(tmp_path):
+    settings = Settings(
+        storage_dir=Path(tmp_path),
+        retrieval_top_k_per_modality=1,
+        retrieval_enable_reranker=False,
+        retrieval_enable_result_diversity=False,
+        retrieval_query_expansion_enabled=True,
+        retrieval_query_expansion_max_variants=4,
+        retrieval_query_expansion_weight=1.0,
+    )
+    store = FaissStore(Path(tmp_path) / "faiss")
+    engine = MultimodalRAG(settings=settings, store=store)
+    engine.text_embedder = QueryAwareEmbedder()  # type: ignore[assignment]
+    engine.vision_embedder = DummyVisionEmbedder()  # type: ignore[assignment]
+    engine.synthesizer = DummySynthesizer()  # type: ignore[assignment]
+
+    scoped_collection = engine._scoped_collection(None, None)
+    sla_chunk = Chunk("sla-1", "ops/sla.csv", Modality.TEXT, "SLA target is 99.9%")
+    enc_chunk = Chunk("enc-1", "sec/policy.csv", Modality.TEXT, "Encryption standard is AES-256")
+    store.upsert(scoped_collection, "text", [[1.0, 0.0], [0.0, 1.0]], [sla_chunk, enc_chunk])
+
+    result = engine.query("What is SLA and encryption standard?", retrieval_mode="dense_only")
+    ids = {hit.chunk.chunk_id for hit in result.hits}
+    assert ids == {"sla-1", "enc-1"}
+    variants = result.retrieval_diagnostics.get("query_variants", [])
+    assert isinstance(variants, list)
+    assert len(variants) >= 2
+
+
+def test_engine_query_expansion_disabled_preserves_single_query_behavior(tmp_path):
+    settings = Settings(
+        storage_dir=Path(tmp_path),
+        retrieval_top_k_per_modality=1,
+        retrieval_enable_reranker=False,
+        retrieval_enable_result_diversity=False,
+        retrieval_query_expansion_enabled=False,
+    )
+    store = FaissStore(Path(tmp_path) / "faiss")
+    engine = MultimodalRAG(settings=settings, store=store)
+    engine.text_embedder = QueryAwareEmbedder()  # type: ignore[assignment]
+    engine.vision_embedder = DummyVisionEmbedder()  # type: ignore[assignment]
+    engine.synthesizer = DummySynthesizer()  # type: ignore[assignment]
+
+    scoped_collection = engine._scoped_collection(None, None)
+    sla_chunk = Chunk("sla-1", "ops/sla.csv", Modality.TEXT, "SLA target is 99.9%")
+    enc_chunk = Chunk("enc-1", "sec/policy.csv", Modality.TEXT, "Encryption standard is AES-256")
+    store.upsert(scoped_collection, "text", [[1.0, 0.0], [0.0, 1.0]], [sla_chunk, enc_chunk])
+
+    result = engine.query("What is SLA and encryption standard?", retrieval_mode="dense_only")
+    assert len(result.hits) == 1
+    assert result.hits[0].chunk.chunk_id == "sla-1"
+    variants = result.retrieval_diagnostics.get("query_variants", [])
+    assert variants == ["What is SLA and encryption standard?"]
