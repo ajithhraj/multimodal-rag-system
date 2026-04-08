@@ -24,6 +24,7 @@ It ships with:
 
 - Hybrid retrieval: dense vector search + lexical BM25
 - Reciprocal Rank Fusion (RRF) for robust ranking
+- Weighted RRF controls to tune text/table/image/lexical influence
 - Optional cross-encoder reranker for precision
 - Result diversification (near-duplicate suppression + per-source balancing)
 - Citation-rich answers (`source`, `modality`, `page`, `excerpt`)
@@ -69,6 +70,7 @@ copy .env.example .env
 ```bash
 mmrag ingest ./data --tenant acme
 mmrag ask "What are the major metrics shown in the latest PDF tables?" --tenant acme
+mmrag ask "Summarize contract risks" --tenant acme --retrieval-mode hybrid_rerank
 mmrag ask "Find charts similar to this trend" --image ./data/query_chart.png --tenant acme
 mmrag serve --host 0.0.0.0 --port 8000
 ```
@@ -93,6 +95,7 @@ docker compose up --build
 - `answer`
 - `sources` (retrieved chunks + score)
 - `citations` (source file, modality, page number, excerpt)
+- accepts optional `retrieval_mode` (`dense_only`, `hybrid`, `hybrid_rerank`)
 
 Example multimodal query:
 
@@ -192,6 +195,10 @@ Important env variables:
 - `MMRAG_RETRIEVAL_TOP_K_PER_MODALITY`
 - `MMRAG_RETRIEVAL_TOP_K_LEXICAL`
 - `MMRAG_RETRIEVAL_RRF_K`
+- `MMRAG_RETRIEVAL_RRF_WEIGHT_TEXT`
+- `MMRAG_RETRIEVAL_RRF_WEIGHT_TABLE`
+- `MMRAG_RETRIEVAL_RRF_WEIGHT_IMAGE`
+- `MMRAG_RETRIEVAL_RRF_WEIGHT_LEXICAL`
 - `MMRAG_RETRIEVAL_ENABLE_RERANKER`
 - `MMRAG_RETRIEVAL_RERANKER_MODEL`
 - `MMRAG_RETRIEVAL_RERANK_CANDIDATES`
@@ -209,8 +216,8 @@ Important env variables:
 ## CLI
 
 - `mmrag ingest <path> [--tenant <tenant-id>]`
-- `mmrag ask <question> [--tenant <tenant-id>]`
-- `mmrag ask <question> --image <path-to-image> [--tenant <tenant-id>]`
+- `mmrag ask <question> [--tenant <tenant-id>] [--retrieval-mode <mode>]`
+- `mmrag ask <question> --image <path-to-image> [--tenant <tenant-id>] [--retrieval-mode <mode>]`
 - `mmrag serve`
 - `mmrag eval <dataset-path> [--tenant <tenant-id>] [--ablation]`
 

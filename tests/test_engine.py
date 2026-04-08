@@ -308,3 +308,32 @@ def test_engine_query_deduplicates_near_identical_context(tmp_path):
     result = engine.query("revenue and margin", retrieval_mode="dense_only")
     assert len(result.hits) == 2
     assert {hit.chunk.chunk_id for hit in result.hits} == {"dup-1", "distinct-1"}
+
+
+def test_engine_query_weighted_hybrid_prioritizes_lexical_signal(tmp_path):
+    settings = Settings(
+        storage_dir=Path(tmp_path),
+        retrieval_top_k_per_modality=2,
+        retrieval_top_k_lexical=5,
+        retrieval_enable_reranker=False,
+        retrieval_enable_result_diversity=False,
+        retrieval_rrf_weight_text=0.1,
+        retrieval_rrf_weight_table=0.0,
+        retrieval_rrf_weight_image=0.0,
+        retrieval_rrf_weight_lexical=3.0,
+    )
+    store = FakeStore()
+    engine = MultimodalRAG(settings=settings, store=store)
+    engine.text_embedder = DummyEmbedder()  # type: ignore[assignment]
+    engine.vision_embedder = DummyVisionEmbedder()  # type: ignore[assignment]
+    engine.synthesizer = DummySynthesizer()  # type: ignore[assignment]
+
+    scoped_collection = engine._scoped_collection(None, None)
+    dense_chunk = Chunk("dense-1", "docs/dense.pdf", Modality.TEXT, "boilerplate")
+    lexical_chunk = Chunk("lex-1", "docs/lexical.pdf", Modality.TEXT, "critical_signal token")
+    store.upsert(scoped_collection, "text", [[1, 0]], [dense_chunk])
+    engine.lexical_index.upsert(scoped_collection, [lexical_chunk])
+
+    result = engine.query("critical_signal", retrieval_mode="hybrid")
+    assert len(result.hits) >= 2
+    assert result.hits[0].chunk.chunk_id == "lex-1"

@@ -13,6 +13,7 @@ class StubEngine:
         self.settings = settings
         self.last_query_image_path = None
         self.last_tenant_id = None
+        self.last_retrieval_mode = None
 
     def ingest_paths(self, paths, collection=None, tenant_id=None):
         self.last_tenant_id = tenant_id
@@ -24,10 +25,12 @@ class StubEngine:
         collection=None,
         top_k=None,
         query_image_path=None,
+        retrieval_mode=None,
         tenant_id=None,
     ):
         self.last_query_image_path = query_image_path
         self.last_tenant_id = tenant_id
+        self.last_retrieval_mode = retrieval_mode
         hit = RetrievalHit(
             chunk=Chunk(
                 chunk_id="x1",
@@ -85,6 +88,20 @@ def test_query_endpoint(tmp_path):
     assert len(payload["citations"]) == 1
     assert payload["citations"][0]["page_number"] == 3
     assert engine.last_tenant_id == "public"
+    assert engine.last_retrieval_mode is None
+
+
+def test_query_endpoint_passes_retrieval_mode(tmp_path):
+    settings = _build_settings(tmp_path)
+    engine = StubEngine(settings)
+    client = _build_client(engine)
+
+    response = client.post(
+        "/query",
+        json={"question": "hello", "retrieval_mode": "dense_only"},
+    )
+    assert response.status_code == 200
+    assert engine.last_retrieval_mode == "dense_only"
 
 
 def test_query_multimodal_endpoint_with_image(tmp_path):
@@ -105,6 +122,20 @@ def test_query_multimodal_endpoint_with_image(tmp_path):
     assert payload["answer"] == "stub:find similar chart"
     assert engine.last_query_image_path is not None
     assert engine.last_tenant_id == "public"
+
+
+def test_query_multimodal_passes_retrieval_mode(tmp_path):
+    settings = _build_settings(tmp_path)
+    engine = StubEngine(settings)
+    client = _build_client(engine)
+
+    data = {
+        "question": "find similar chart",
+        "retrieval_mode": "hybrid_rerank",
+    }
+    response = client.post("/query-multimodal", data=data)
+    assert response.status_code == 200
+    assert engine.last_retrieval_mode == "hybrid_rerank"
 
 
 def test_query_uses_tenant_header_when_auth_disabled(tmp_path):

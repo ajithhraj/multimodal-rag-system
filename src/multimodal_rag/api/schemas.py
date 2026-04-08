@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -20,6 +22,7 @@ class QueryRequest(BaseModel):
     question: str = Field(min_length=2)
     collection: str | None = None
     top_k: int | None = Field(default=None, ge=1, le=50)
+    retrieval_mode: Literal["dense_only", "hybrid", "hybrid_rerank"] | None = None
 
 
 class SourceItem(BaseModel):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
             question=payload.question,
             collection=payload.collection,
             top_k=payload.top_k,
+            retrieval_mode=payload.retrieval_mode,
             tenant_id=tenant_id,
         )
         return to_query_response(result)
@@ -104,6 +106,7 @@ def create_app() -> FastAPI:
         image: UploadFile | None = File(default=None),
         collection: str | None = Form(default=None),
         top_k: int | None = Form(default=None),
+        retrieval_mode: Literal["dense_only", "hybrid", "hybrid_rerank"] | None = Form(default=None),
         tenant_id: str = Depends(resolve_tenant_id),
         engine: MultimodalRAG = Depends(get_engine),
     ) -> QueryResponse:
@@ -128,6 +131,7 @@ def create_app() -> FastAPI:
             collection=collection,
             top_k=top_k,
             query_image_path=query_image_path,
+            retrieval_mode=retrieval_mode,
             tenant_id=tenant_id,
         )
         return to_query_response(result)

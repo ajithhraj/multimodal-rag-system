@@ -304,6 +304,11 @@ class MultimodalRAG:
         dense_fused = reciprocal_rank_fusion(
             [text_hits, table_hits, image_hits],
             k=self.settings.retrieval_rrf_k,
+            weights=[
+                self.settings.retrieval_rrf_weight_text,
+                self.settings.retrieval_rrf_weight_table,
+                self.settings.retrieval_rrf_weight_image,
+            ],
         )
 
         if mode == "dense_only":
@@ -317,6 +322,12 @@ class MultimodalRAG:
             hybrid_fused = reciprocal_rank_fusion(
                 [text_hits, table_hits, image_hits, lexical_hits],
                 k=self.settings.retrieval_rrf_k,
+                weights=[
+                    self.settings.retrieval_rrf_weight_text,
+                    self.settings.retrieval_rrf_weight_table,
+                    self.settings.retrieval_rrf_weight_image,
+                    self.settings.retrieval_rrf_weight_lexical,
+                ],
             )
             if mode == "hybrid":
                 final_hits = self._diversify_hits(hybrid_fused)

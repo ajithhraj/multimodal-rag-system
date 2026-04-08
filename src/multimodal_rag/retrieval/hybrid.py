@@ -152,15 +152,25 @@ class LexicalIndex:
         return hits
 
 
-def reciprocal_rank_fusion(result_lists: list[list[RetrievalHit]], k: int = 60) -> list[RetrievalHit]:
+def reciprocal_rank_fusion(
+    result_lists: list[list[RetrievalHit]],
+    k: int = 60,
+    weights: list[float] | None = None,
+) -> list[RetrievalHit]:
     """Merge ranked lists with RRF: score(d)=sum(1/(k+rank_i(d)))."""
+    if weights is not None and len(weights) != len(result_lists):
+        raise ValueError("weights length must match result_lists length")
+
     fused_scores: dict[str, float] = {}
     chunk_lookup: dict[str, Chunk] = {}
 
-    for results in result_lists:
+    for list_index, results in enumerate(result_lists):
+        weight = 1.0 if weights is None else float(weights[list_index])
+        if weight <= 0.0:
+            continue
         for rank, hit in enumerate(results, start=1):
             chunk_id = hit.chunk.chunk_id
-            fused_scores[chunk_id] = fused_scores.get(chunk_id, 0.0) + (1.0 / (k + rank))
+            fused_scores[chunk_id] = fused_scores.get(chunk_id, 0.0) + (weight / (k + rank))
             chunk_lookup[chunk_id] = hit.chunk
 
     ordered = sorted(fused_scores, key=lambda item: fused_scores[item], reverse=True)

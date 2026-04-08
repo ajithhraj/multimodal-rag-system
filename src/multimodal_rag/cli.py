@@ -51,6 +51,10 @@ def ask(
     tenant: str | None = typer.Option(None, help="Tenant namespace for retrieval."),
     collection: str | None = typer.Option(None, help="Collection name."),
     top_k: int | None = typer.Option(None, min=1, max=50, help="Top-k per modality."),
+    retrieval_mode: Literal["dense_only", "hybrid", "hybrid_rerank"] | None = typer.Option(
+        None,
+        help="Retrieval mode override.",
+    ),
     backend: Literal["faiss", "qdrant"] | None = typer.Option(None, help="Vector backend override."),
 ) -> None:
     engine = _build_engine(backend)
@@ -61,6 +65,7 @@ def ask(
         collection=collection,
         top_k=top_k,
         query_image_path=image,
+        retrieval_mode=retrieval_mode,
         tenant_id=tenant,
     )
     typer.echo(result.answer)
