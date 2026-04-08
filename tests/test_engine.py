@@ -398,3 +398,42 @@ def test_engine_query_does_not_auto_correct_when_mode_is_explicit(tmp_path):
     result = engine.query("coverage", retrieval_mode="dense_only")
     assert result.corrected is False
     assert result.retrieval_mode == "dense_only"
+
+
+def test_engine_query_enforces_grounded_fallback_when_configured(tmp_path):
+    settings = Settings(
+        storage_dir=Path(tmp_path),
+        retrieval_top_k_per_modality=2,
+        retrieval_enable_reranker=False,
+        response_require_citations=True,
+        response_min_citations=1,
+        response_ungrounded_fallback_text="fallback-answer",
+    )
+    store = EmptyQueryStore()
+    engine = MultimodalRAG(settings=settings, store=store)
+    engine.text_embedder = DummyEmbedder()  # type: ignore[assignment]
+    engine.vision_embedder = DummyVisionEmbedder()  # type: ignore[assignment]
+    engine.synthesizer = DummySynthesizer()  # type: ignore[assignment]
+
+    result = engine.query("no evidence")
+    assert result.grounded is False
+    assert result.answer == "fallback-answer"
+
+
+def test_engine_query_keeps_answer_when_grounded_requirement_is_disabled(tmp_path):
+    settings = Settings(
+        storage_dir=Path(tmp_path),
+        retrieval_top_k_per_modality=2,
+        retrieval_enable_reranker=False,
+        response_require_citations=False,
+        response_min_citations=1,
+    )
+    store = EmptyQueryStore()
+    engine = MultimodalRAG(settings=settings, store=store)
+    engine.text_embedder = DummyEmbedder()  # type: ignore[assignment]
+    engine.vision_embedder = DummyVisionEmbedder()  # type: ignore[assignment]
+    engine.synthesizer = DummySynthesizer()  # type: ignore[assignment]
+
+    result = engine.query("no evidence")
+    assert result.grounded is False
+    assert "answer:no evidence" in result.answer

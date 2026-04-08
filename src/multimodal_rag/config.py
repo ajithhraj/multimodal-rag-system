@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     retrieval_auto_correct_target_mode: Literal["hybrid", "hybrid_rerank"] = "hybrid_rerank"
     retrieval_auto_correct_top_k_multiplier: float = Field(default=2.0, ge=1.0, le=5.0)
     retrieval_auto_correct_lexical_multiplier: float = Field(default=2.0, ge=1.0, le=5.0)
+    response_require_citations: bool = False
+    response_min_citations: int = Field(default=1, ge=0, le=20)
+    response_ungrounded_fallback_text: str = (
+        "I do not have enough grounded evidence in the retrieved context to answer reliably."
+    )
 
     auth_enabled: bool = False
     auth_api_key_header: str = "X-API-Key"

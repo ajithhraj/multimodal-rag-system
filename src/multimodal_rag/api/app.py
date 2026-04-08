@@ -59,6 +59,7 @@ def create_app() -> FastAPI:
             ],
             retrieval_mode=result.retrieval_mode,
             corrected=result.corrected,
+            grounded=result.grounded,
             retrieval_diagnostics=result.retrieval_diagnostics,
             latency_ms=latency_ms,
         )
@@ -144,6 +145,7 @@ def create_app() -> FastAPI:
                 {
                     "retrieval_mode": response.retrieval_mode,
                     "corrected": response.corrected,
+                    "grounded": response.grounded,
                     "latency_ms": response.latency_ms,
                 },
             )
