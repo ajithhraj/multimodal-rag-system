@@ -44,3 +44,5 @@ class QueryResponse(BaseModel):
     answer: str
     sources: list[SourceItem]
     citations: list[CitationItem]
+    retrieval_mode: str | None = None
+    latency_ms: float | None = None

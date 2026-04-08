@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from time import perf_counter
 from typing import Literal
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
@@ -20,7 +21,7 @@ from multimodal_rag.engine import MultimodalRAG
 def create_app() -> FastAPI:
     app = FastAPI(title="Multimodal RAG API", version="0.1.0")
 
-    def to_query_response(result) -> QueryResponse:
+    def to_query_response(result, latency_ms: float) -> QueryResponse:
         return QueryResponse(
             answer=result.answer,
             sources=[
@@ -42,6 +43,8 @@ def create_app() -> FastAPI:
                 )
                 for citation in result.citations
             ],
+            retrieval_mode=result.retrieval_mode,
+            latency_ms=latency_ms,
         )
 
     @app.get("/health")
@@ -91,6 +94,7 @@ def create_app() -> FastAPI:
         tenant_id: str = Depends(resolve_tenant_id),
         engine: MultimodalRAG = Depends(get_engine),
     ) -> QueryResponse:
+        start = perf_counter()
         result = engine.query(
             question=payload.question,
             collection=payload.collection,
@@ -98,7 +102,8 @@ def create_app() -> FastAPI:
             retrieval_mode=payload.retrieval_mode,
             tenant_id=tenant_id,
         )
-        return to_query_response(result)
+        latency_ms = (perf_counter() - start) * 1000.0
+        return to_query_response(result, latency_ms=latency_ms)
 
     @app.post("/query-multimodal", response_model=QueryResponse)
     async def query_multimodal(
@@ -126,6 +131,7 @@ def create_app() -> FastAPI:
             query_image_path.write_bytes(content)
 
         query_text = prompt or "Find visually similar or related context for this image."
+        start = perf_counter()
         result = engine.query(
             question=query_text,
             collection=collection,
@@ -134,7 +140,8 @@ def create_app() -> FastAPI:
             retrieval_mode=retrieval_mode,
             tenant_id=tenant_id,
         )
-        return to_query_response(result)
+        latency_ms = (perf_counter() - start) * 1000.0
+        return to_query_response(result, latency_ms=latency_ms)
 
     return app
 

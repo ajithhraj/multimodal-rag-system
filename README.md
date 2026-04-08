@@ -95,6 +95,8 @@ docker compose up --build
 - `answer`
 - `sources` (retrieved chunks + score)
 - `citations` (source file, modality, page number, excerpt)
+- `retrieval_mode` (effective mode used by the engine)
+- `latency_ms` (request retrieval+generation time)
 - accepts optional `retrieval_mode` (`dense_only`, `hybrid`, `hybrid_rerank`)
 
 Example multimodal query:
