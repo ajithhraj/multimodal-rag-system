@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Literal
 
 from multimodal_rag.config import Settings, get_settings
 from multimodal_rag.embedding.providers import TextEmbedder, VisionEmbedder
@@ -12,6 +12,8 @@ from multimodal_rag.models import Citation, Chunk, Modality, QueryAnswer, Retrie
 from multimodal_rag.retrieval import CrossEncoderReranker, LexicalIndex, reciprocal_rank_fusion
 from multimodal_rag.storage.base import VectorStore
 from multimodal_rag.storage.factory import create_vector_store
+
+RetrievalMode = Literal["dense_only", "hybrid", "hybrid_rerank"]
 
 
 class MultimodalRAG:
@@ -39,6 +41,19 @@ class MultimodalRAG:
         for chunk in chunks:
             grouped[chunk.modality].append(chunk)
         return grouped
+
+    def _default_retrieval_mode(self) -> RetrievalMode:
+        if self.settings.retrieval_enable_reranker:
+            return "hybrid_rerank"
+        return "hybrid"
+
+    @staticmethod
+    def _resolve_retrieval_mode(retrieval_mode: str | None, default_mode: RetrievalMode) -> RetrievalMode:
+        allowed: set[str] = {"dense_only", "hybrid", "hybrid_rerank"}
+        mode = retrieval_mode or default_mode
+        if mode not in allowed:
+            raise ValueError(f"Unsupported retrieval_mode '{mode}'. Allowed: dense_only, hybrid, hybrid_rerank")
+        return mode  # type: ignore[return-value]
 
     def ingest_paths(self, raw_paths: list[Path], collection: str | None = None) -> dict[str, int]:
         target_collection = self._resolve_collection(collection)
@@ -127,9 +142,11 @@ class MultimodalRAG:
         collection: str | None = None,
         top_k: int | None = None,
         query_image_path: Path | None = None,
+        retrieval_mode: str | None = None,
     ) -> QueryAnswer:
         target_collection = self._resolve_collection(collection)
         per_modality_k = top_k or self.settings.retrieval_top_k_per_modality
+        mode = self._resolve_retrieval_mode(retrieval_mode, self._default_retrieval_mode())
 
         text_query_vec = self.text_embedder.embed_query(question)
         vision_query_vec = self._build_vision_query_vector(question, query_image_path)
@@ -152,19 +169,39 @@ class MultimodalRAG:
             vision_query_vec,
             per_modality_k,
         )
-        lexical_hits = self.lexical_index.search(
-            target_collection,
-            question,
-            top_k=self.settings.retrieval_top_k_lexical,
-        )
 
-        fused = reciprocal_rank_fusion(
-            [text_hits, table_hits, image_hits, lexical_hits],
+        dense_fused = reciprocal_rank_fusion(
+            [text_hits, table_hits, image_hits],
             k=self.settings.retrieval_rrf_k,
         )
-        rerank_pool = fused[: self.settings.retrieval_rerank_candidates]
-        final_hits = self.reranker.rerank(question, rerank_pool, top_k=self.settings.max_context_chunks)
+
+        if mode == "dense_only":
+            final_hits = dense_fused[: self.settings.max_context_chunks]
+        else:
+            lexical_hits = self.lexical_index.search(
+                target_collection,
+                question,
+                top_k=self.settings.retrieval_top_k_lexical,
+            )
+            hybrid_fused = reciprocal_rank_fusion(
+                [text_hits, table_hits, image_hits, lexical_hits],
+                k=self.settings.retrieval_rrf_k,
+            )
+            if mode == "hybrid":
+                final_hits = hybrid_fused[: self.settings.max_context_chunks]
+            else:
+                rerank_pool = hybrid_fused[: self.settings.retrieval_rerank_candidates]
+                final_hits = self.reranker.rerank(
+                    question,
+                    rerank_pool,
+                    top_k=self.settings.max_context_chunks,
+                )
 
         answer = self.synthesizer.generate(question, final_hits)
         citations = self._build_citations(final_hits)
-        return QueryAnswer(answer=answer, hits=final_hits, citations=citations)
+        return QueryAnswer(
+            answer=answer,
+            hits=final_hits,
+            citations=citations,
+            retrieval_mode=mode,
+        )

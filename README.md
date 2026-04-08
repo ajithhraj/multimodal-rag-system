@@ -28,6 +28,7 @@ It ships with:
 - Citation-rich answers (`source`, `modality`, `page`, `excerpt`)
 - Pluggable vector backends (`faiss` and `qdrant`)
 - Layout-aware PDF ingestion with table-region text dedup
+- Adaptive chunk sizing by section style (narrative/procedural/table-like)
 
 ## System Architecture
 
@@ -122,6 +123,12 @@ Run structured retrieval benchmarks with the built-in evaluator:
 mmrag eval ./eval/datasets/starter_eval.jsonl --ingest-path ./data --k-values 1,3,5,10
 ```
 
+Run retrieval strategy ablations:
+
+```bash
+mmrag eval ./eval/datasets/starter_eval.jsonl --ingest-path ./data --ablation
+```
+
 What it reports:
 - `Recall@k` (for configured k values)
 - `MRR`
@@ -154,6 +161,14 @@ Important env variables:
 - `MMRAG_VECTOR_BACKEND`
 - `MMRAG_STORAGE_DIR`
 - `MMRAG_COLLECTION`
+- `MMRAG_CHUNK_SIZE`
+- `MMRAG_CHUNK_OVERLAP`
+- `MMRAG_ADAPTIVE_CHUNKING_ENABLED`
+- `MMRAG_ADAPTIVE_CHUNKING_MIN_SIZE`
+- `MMRAG_ADAPTIVE_CHUNKING_TABLE_FACTOR`
+- `MMRAG_ADAPTIVE_CHUNKING_PROCEDURAL_FACTOR`
+- `MMRAG_ADAPTIVE_CHUNKING_NARRATIVE_FACTOR`
+- `MMRAG_ADAPTIVE_CHUNKING_OVERLAP_FACTOR`
 - `MMRAG_OPENAI_API_KEY`
 - `MMRAG_RETRIEVAL_TOP_K_PER_MODALITY`
 - `MMRAG_RETRIEVAL_TOP_K_LEXICAL`
@@ -171,6 +186,7 @@ Important env variables:
 - `mmrag ask <question>`
 - `mmrag ask <question> --image <path-to-image>`
 - `mmrag serve`
+- `mmrag eval <dataset-path> [--ablation]`
 
 Run `mmrag --help` for full options.
 

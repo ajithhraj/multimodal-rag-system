@@ -40,6 +40,16 @@ Optional:
 - `--collection your_collection`
 - `--output ./eval/report.json`
 
+Run ablations:
+
+```bash
+mmrag eval ./eval/datasets/starter_eval.jsonl --ingest-path ./data --ablation
+```
+
+Optional ablation controls:
+- `--ablation-modes dense_only,hybrid,hybrid_rerank`
+- `--ablation-baseline dense_only`
+
 ## Recommended Benchmark Size
 
 For interview-grade reporting, curate 30-50 cases split across:

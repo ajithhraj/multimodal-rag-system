@@ -19,6 +19,7 @@ class EvalCase(BaseModel):
 
 class CaseEvaluation(BaseModel):
     case_id: str
+    retrieval_mode: str | None = None
     latency_ms: float
     hit_count: int
     citation_count: int
@@ -48,5 +49,25 @@ class EvaluationReport(BaseModel):
     dataset_path: str
     k_values: list[int]
     generated_at_utc: str
+    retrieval_mode: str | None = None
     summary: EvaluationSummary
     cases: list[CaseEvaluation]
+
+
+class AblationDelta(BaseModel):
+    mode: str
+    avg_latency_ms_delta: float
+    p95_latency_ms_delta: float
+    mean_mrr_delta: float | None = None
+    mean_recall_at_delta: dict[str, float] = Field(default_factory=dict)
+    citation_hit_rate_delta: float | None = None
+    mean_citation_precision_delta: float | None = None
+
+
+class AblationReport(BaseModel):
+    dataset_path: str
+    k_values: list[int]
+    generated_at_utc: str
+    baseline_mode: str
+    mode_reports: dict[str, EvaluationReport]
+    deltas_vs_baseline: list[AblationDelta]

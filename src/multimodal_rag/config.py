@@ -20,6 +20,12 @@ class Settings(BaseSettings):
 
     chunk_size: int = 900
     chunk_overlap: int = 140
+    adaptive_chunking_enabled: bool = True
+    adaptive_chunking_min_size: int = Field(default=280, ge=64, le=4096)
+    adaptive_chunking_table_factor: float = Field(default=0.58, ge=0.2, le=1.0)
+    adaptive_chunking_procedural_factor: float = Field(default=0.78, ge=0.2, le=1.2)
+    adaptive_chunking_narrative_factor: float = Field(default=1.0, ge=0.4, le=1.5)
+    adaptive_chunking_overlap_factor: float = Field(default=0.8, ge=0.2, le=1.2)
     max_context_chunks: int = 8
 
     orchestrator: Literal["langchain", "llamaindex"] = "langchain"

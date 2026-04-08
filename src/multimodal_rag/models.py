@@ -60,3 +60,4 @@ class QueryAnswer:
     answer: str
     hits: list[RetrievalHit]
     citations: list[Citation] = field(default_factory=list)
+    retrieval_mode: str | None = None

@@ -311,6 +311,12 @@ def extract_pdf_chunks(path: Path, settings: Settings) -> list[Chunk]:
                 segments,
                 chunk_size=settings.chunk_size,
                 chunk_overlap=settings.chunk_overlap,
+                adaptive=settings.adaptive_chunking_enabled,
+                min_chunk_size=settings.adaptive_chunking_min_size,
+                table_factor=settings.adaptive_chunking_table_factor,
+                procedural_factor=settings.adaptive_chunking_procedural_factor,
+                narrative_factor=settings.adaptive_chunking_narrative_factor,
+                overlap_factor=settings.adaptive_chunking_overlap_factor,
             )
             for segment in split_segments:
                 text_index += 1

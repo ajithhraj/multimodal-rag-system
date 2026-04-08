@@ -7,8 +7,17 @@ from time import perf_counter
 
 import orjson
 
-from multimodal_rag.eval.models import CaseEvaluation, EvalCase, EvaluationReport, EvaluationSummary
+from multimodal_rag.eval.models import (
+    AblationDelta,
+    AblationReport,
+    CaseEvaluation,
+    EvalCase,
+    EvaluationReport,
+    EvaluationSummary,
+)
 from multimodal_rag.models import Citation, RetrievalHit
+
+RETRIEVAL_MODES = ("dense_only", "hybrid", "hybrid_rerank")
 
 
 def parse_k_values(raw: str) -> list[int]:
@@ -27,6 +36,25 @@ def parse_k_values(raw: str) -> list[int]:
     if not values:
         raise ValueError("Provide at least one k value")
     return sorted(values)
+
+
+def parse_retrieval_modes(raw: str) -> list[str]:
+    modes: list[str] = []
+    seen: set[str] = set()
+    for part in raw.split(","):
+        mode = part.strip().lower()
+        if not mode:
+            continue
+        if mode not in RETRIEVAL_MODES:
+            raise ValueError(
+                f"Unsupported retrieval mode '{mode}'. Allowed: {', '.join(RETRIEVAL_MODES)}"
+            )
+        if mode not in seen:
+            seen.add(mode)
+            modes.append(mode)
+    if not modes:
+        raise ValueError("Provide at least one retrieval mode")
+    return modes
 
 
 def _normalize_path(path: str) -> str:
@@ -77,6 +105,12 @@ def _percentile(values: list[float], percentile: float) -> float:
     return float(ordered[rank])
 
 
+def _delta(new_value: float | None, base_value: float | None) -> float | None:
+    if new_value is None or base_value is None:
+        return None
+    return new_value - base_value
+
+
 def load_eval_cases(dataset_path: Path) -> list[EvalCase]:
     if not dataset_path.exists():
         raise FileNotFoundError(f"Evaluation dataset file not found: {dataset_path}")
@@ -117,6 +151,7 @@ def run_evaluation(
     dataset_path: Path,
     default_collection: str | None,
     k_values: list[int],
+    retrieval_mode: str | None = None,
 ) -> EvaluationReport:
     latencies: list[float] = []
     case_metrics: list[CaseEvaluation] = []
@@ -149,6 +184,7 @@ def run_evaluation(
             collection=case.collection or default_collection,
             top_k=case.top_k,
             query_image_path=query_image_path,
+            retrieval_mode=retrieval_mode,
         )
         latency_ms = (perf_counter() - start) * 1000.0
         latencies.append(latency_ms)
@@ -203,6 +239,7 @@ def run_evaluation(
         case_metrics.append(
             CaseEvaluation(
                 case_id=case.case_id or "unknown_case",
+                retrieval_mode=result.retrieval_mode,
                 latency_ms=latency_ms,
                 hit_count=len(result.hits),
                 citation_count=len(result.citations),
@@ -242,11 +279,79 @@ def run_evaluation(
         dataset_path=str(dataset_path),
         k_values=k_values,
         generated_at_utc=datetime.now(timezone.utc).isoformat(),
+        retrieval_mode=retrieval_mode,
         summary=summary,
         cases=case_metrics,
     )
 
 
+def run_ablation_evaluation(
+    engine,
+    cases: list[EvalCase],
+    dataset_path: Path,
+    default_collection: str | None,
+    k_values: list[int],
+    modes: list[str],
+    baseline_mode: str,
+) -> AblationReport:
+    if baseline_mode not in modes:
+        raise ValueError("baseline_mode must be present in ablation modes")
+
+    mode_reports: dict[str, EvaluationReport] = {}
+    for mode in modes:
+        mode_reports[mode] = run_evaluation(
+            engine=engine,
+            cases=cases,
+            dataset_path=dataset_path,
+            default_collection=default_collection,
+            k_values=k_values,
+            retrieval_mode=mode,
+        )
+
+    baseline_summary = mode_reports[baseline_mode].summary
+    deltas: list[AblationDelta] = []
+    for mode in modes:
+        if mode == baseline_mode:
+            continue
+        summary = mode_reports[mode].summary
+
+        recall_delta: dict[str, float] = {}
+        keys = set(baseline_summary.mean_recall_at) | set(summary.mean_recall_at)
+        for key in sorted(keys, key=lambda v: int(v)):
+            recall_delta[key] = summary.mean_recall_at.get(key, 0.0) - baseline_summary.mean_recall_at.get(
+                key, 0.0
+            )
+
+        deltas.append(
+            AblationDelta(
+                mode=mode,
+                avg_latency_ms_delta=summary.avg_latency_ms - baseline_summary.avg_latency_ms,
+                p95_latency_ms_delta=summary.p95_latency_ms - baseline_summary.p95_latency_ms,
+                mean_mrr_delta=_delta(summary.mean_mrr, baseline_summary.mean_mrr),
+                mean_recall_at_delta=recall_delta,
+                citation_hit_rate_delta=_delta(summary.citation_hit_rate, baseline_summary.citation_hit_rate),
+                mean_citation_precision_delta=_delta(
+                    summary.mean_citation_precision,
+                    baseline_summary.mean_citation_precision,
+                ),
+            )
+        )
+
+    return AblationReport(
+        dataset_path=str(dataset_path),
+        k_values=k_values,
+        generated_at_utc=datetime.now(timezone.utc).isoformat(),
+        baseline_mode=baseline_mode,
+        mode_reports=mode_reports,
+        deltas_vs_baseline=deltas,
+    )
+
+
 def save_evaluation_report(report: EvaluationReport, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(orjson.dumps(report.model_dump(), option=orjson.OPT_INDENT_2))
+
+
+def save_ablation_report(report: AblationReport, output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(orjson.dumps(report.model_dump(), option=orjson.OPT_INDENT_2))

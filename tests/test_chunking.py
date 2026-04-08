@@ -1,4 +1,9 @@
-from multimodal_rag.ingestion.chunking import looks_like_heading, split_structured_segments, split_text
+from multimodal_rag.ingestion.chunking import (
+    classify_section_style,
+    looks_like_heading,
+    split_structured_segments,
+    split_text,
+)
 
 
 def test_split_text_produces_chunks():
@@ -28,3 +33,9 @@ def test_split_structured_segments_keeps_metadata():
     assert all(item["metadata"]["page_number"] == 2 for item in split)
     assert all(item["metadata"]["section_title"] == "Executive Summary" for item in split)
     assert split[0]["metadata"]["segment_part"] == 1
+
+
+def test_classify_section_style():
+    assert classify_section_style("| A | B |\n|---|---|", section_title="Table 1 Revenue") == "table_like"
+    assert classify_section_style("1. Step one\n2. Step two", section_title="Procedure") == "procedural"
+    assert classify_section_style("This section explains the system design and rationale.") == "narrative"

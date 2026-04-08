@@ -9,7 +9,15 @@ import uvicorn
 
 from multimodal_rag.config import get_settings
 from multimodal_rag.engine import MultimodalRAG
-from multimodal_rag.eval import load_eval_cases, parse_k_values, run_evaluation, save_evaluation_report
+from multimodal_rag.eval import (
+    load_eval_cases,
+    parse_k_values,
+    parse_retrieval_modes,
+    run_ablation_evaluation,
+    run_evaluation,
+    save_ablation_report,
+    save_evaluation_report,
+)
 
 app = typer.Typer(help="Multimodal RAG CLI")
 
@@ -88,6 +96,19 @@ def evaluate(
     ),
     collection: str | None = typer.Option(None, help="Collection name."),
     k_values: str = typer.Option("1,3,5", help="Comma-separated K values, for example: 1,3,5,10"),
+    ablation: bool = typer.Option(
+        False,
+        "--ablation",
+        help="Run multi-strategy ablation (dense_only, hybrid, hybrid_rerank).",
+    ),
+    ablation_modes: str = typer.Option(
+        "dense_only,hybrid,hybrid_rerank",
+        help="Comma-separated ablation modes.",
+    ),
+    ablation_baseline: str = typer.Option(
+        "dense_only",
+        help="Baseline mode used for delta comparisons in ablation reports.",
+    ),
     output: Path | None = typer.Option(None, help="Optional output path for JSON report."),
     backend: Literal["faiss", "qdrant"] | None = typer.Option(None, help="Vector backend override."),
 ) -> None:
@@ -112,35 +133,86 @@ def evaluate(
         raise typer.BadParameter(str(exc)) from exc
 
     cases = load_eval_cases(dataset)
-    report = run_evaluation(
-        engine=engine,
-        cases=cases,
-        dataset_path=dataset,
-        default_collection=collection,
-        k_values=parsed_k_values,
-    )
+    if ablation:
+        try:
+            modes = parse_retrieval_modes(ablation_modes)
+            baseline_mode = ablation_baseline.strip().lower()
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        if baseline_mode not in modes:
+            raise typer.BadParameter("ablation_baseline must be included in ablation_modes")
+
+        report = run_ablation_evaluation(
+            engine=engine,
+            cases=cases,
+            dataset_path=dataset,
+            default_collection=collection,
+            k_values=parsed_k_values,
+            modes=modes,
+            baseline_mode=baseline_mode,
+        )
+    else:
+        report = run_evaluation(
+            engine=engine,
+            cases=cases,
+            dataset_path=dataset,
+            default_collection=collection,
+            k_values=parsed_k_values,
+        )
 
     report_path = output
     if report_path is None:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        report_path = engine.settings.storage_dir / "eval_reports" / f"report_{stamp}.json"
-    save_evaluation_report(report, report_path)
+        if ablation:
+            report_path = engine.settings.storage_dir / "eval_reports" / f"ablation_{stamp}.json"
+        else:
+            report_path = engine.settings.storage_dir / "eval_reports" / f"report_{stamp}.json"
 
-    summary = report.summary
-    typer.echo("\nEvaluation Summary")
-    typer.echo(f"- Total cases: {summary.total_cases}")
-    typer.echo(f"- Retrieval-evaluable cases: {summary.retrieval_evaluable_cases}")
-    typer.echo(f"- Citation-evaluable cases: {summary.citation_evaluable_cases}")
-    typer.echo(f"- Avg latency (ms): {summary.avg_latency_ms:.2f}")
-    typer.echo(f"- P95 latency (ms): {summary.p95_latency_ms:.2f}")
-    if summary.mean_mrr is not None:
-        typer.echo(f"- Mean MRR: {summary.mean_mrr:.4f}")
-    for key, value in summary.mean_recall_at.items():
-        typer.echo(f"- Mean Recall@{key}: {value:.4f}")
-    if summary.citation_hit_rate is not None:
-        typer.echo(f"- Citation hit-rate: {summary.citation_hit_rate:.4f}")
-    if summary.mean_citation_precision is not None:
-        typer.echo(f"- Mean citation precision: {summary.mean_citation_precision:.4f}")
+    if ablation:
+        save_ablation_report(report, report_path)
+        typer.echo("\nAblation Summary")
+        typer.echo(f"- Baseline mode: {report.baseline_mode}")
+        for mode, mode_report in report.mode_reports.items():
+            summary = mode_report.summary
+            mrr_value = f"{summary.mean_mrr:.4f}" if summary.mean_mrr is not None else "n/a"
+            citation_value = (
+                f"{summary.citation_hit_rate:.4f}" if summary.citation_hit_rate is not None else "n/a"
+            )
+            recall5 = summary.mean_recall_at.get("5", 0.0)
+            typer.echo(
+                f"- {mode}: MRR={mrr_value}, Recall@5={recall5:.4f}, "
+                f"CitationHit={citation_value}, AvgLatencyMs={summary.avg_latency_ms:.2f}"
+            )
+        for delta in report.deltas_vs_baseline:
+            mrr_delta = f"{delta.mean_mrr_delta:+.4f}" if delta.mean_mrr_delta is not None else "n/a"
+            citation_delta = (
+                f"{delta.citation_hit_rate_delta:+.4f}"
+                if delta.citation_hit_rate_delta is not None
+                else "n/a"
+            )
+            typer.echo(
+                f"- Delta vs {report.baseline_mode} [{delta.mode}]: "
+                f"MRR={mrr_delta}, CitationHit={citation_delta}, "
+                f"AvgLatencyMs={delta.avg_latency_ms_delta:+.2f}"
+            )
+    else:
+        save_evaluation_report(report, report_path)
+        summary = report.summary
+        typer.echo("\nEvaluation Summary")
+        typer.echo(f"- Total cases: {summary.total_cases}")
+        typer.echo(f"- Retrieval-evaluable cases: {summary.retrieval_evaluable_cases}")
+        typer.echo(f"- Citation-evaluable cases: {summary.citation_evaluable_cases}")
+        typer.echo(f"- Avg latency (ms): {summary.avg_latency_ms:.2f}")
+        typer.echo(f"- P95 latency (ms): {summary.p95_latency_ms:.2f}")
+        if summary.mean_mrr is not None:
+            typer.echo(f"- Mean MRR: {summary.mean_mrr:.4f}")
+        for key, value in summary.mean_recall_at.items():
+            typer.echo(f"- Mean Recall@{key}: {value:.4f}")
+        if summary.citation_hit_rate is not None:
+            typer.echo(f"- Citation hit-rate: {summary.citation_hit_rate:.4f}")
+        if summary.mean_citation_precision is not None:
+            typer.echo(f"- Mean citation precision: {summary.mean_citation_precision:.4f}")
+
     typer.echo(f"- Report saved to: {report_path}")
 
 
