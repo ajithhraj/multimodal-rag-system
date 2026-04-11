@@ -87,6 +87,17 @@ API docs: `http://localhost:8000/docs`
 docker compose up --build
 ```
 
+## Local Deployment (Windows)
+
+Use the operational scripts for repeatable local deployment:
+
+```powershell
+.\scripts\deploy_local.ps1
+.\scripts\status_local.ps1
+.\scripts\restart_local.ps1
+.\scripts\stop_local.ps1
+```
+
 ## API Surface
 
 - `GET /health`
