@@ -1,0 +1,295 @@
+from __future__ import annotations
+
+import time
+import uuid
+from collections import defaultdict, deque
+from pathlib import Path
+from time import perf_counter
+from typing import Literal
+
+import orjson
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import StreamingResponse
+
+from multimodal_rag.api.deps import get_engine, resolve_tenant_id
+from multimodal_rag.api.schemas import (
+    CitationItem,
+    IngestPathsRequest,
+    IngestResponse,
+    QueryRequest,
+    QueryResponse,
+    SourceItem,
+)
+from multimodal_rag.engine import MultimodalRAG
+
+# ---------------------------------------------------------------------------
+# In-memory job store (replace with Redis/DB for multi-process deployments)
+# ---------------------------------------------------------------------------
+_JOB_STORE: dict[str, dict] = {}
+
+
+def _set_job(job_id: str, status: str, **extra) -> None:
+    _JOB_STORE[job_id] = {"job_id": job_id, "status": status, **extra}
+
+
+# ---------------------------------------------------------------------------
+# In-memory rate limiter (sliding window per tenant)
+# ---------------------------------------------------------------------------
+_RATE_WINDOWS: dict[str, deque] = defaultdict(deque)
+
+
+def _check_rate_limit(tenant_id: str, rpm: int) -> None:
+    if rpm <= 0:
+        return
+    now = time.monotonic()
+    window = _RATE_WINDOWS[tenant_id]
+    cutoff = now - 60.0
+    while window and window[0] < cutoff:
+        window.popleft()
+    if len(window) >= rpm:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded ({rpm} req/min for tenant '{tenant_id}'). Retry after 60 s.",
+            headers={"Retry-After": "60"},
+        )
+    window.append(now)
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="Multimodal RAG API", version="0.2.0")
+
+    # ------------------------------------------------------------------
+    # Rate-limit middleware dependency
+    # ------------------------------------------------------------------
+    def rate_limit(
+        request: Request,
+        tenant_id: str = Depends(resolve_tenant_id),
+        engine: MultimodalRAG = Depends(get_engine),
+    ) -> str:
+        if engine.settings.rate_limit_enabled:
+            _check_rate_limit(tenant_id, engine.settings.rate_limit_rpm)
+        return tenant_id
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+    def _sse_event(event: str, payload: dict) -> str:
+        json_payload = orjson.dumps(payload).decode("utf-8")
+        return f"event: {event}\ndata: {json_payload}\n\n"
+
+    def _answer_chunks(answer: str, chunk_size: int = 64):
+        clean = answer or ""
+        for index in range(0, len(clean), chunk_size):
+            yield clean[index: index + chunk_size]
+
+    def to_query_response(result, latency_ms: float) -> QueryResponse:
+        return QueryResponse(
+            answer=result.answer,
+            sources=[
+                SourceItem(
+                    chunk_id=hit.chunk.chunk_id,
+                    source_path=hit.chunk.source_path,
+                    modality=hit.chunk.modality.value,
+                    score=hit.score,
+                )
+                for hit in result.hits
+            ],
+            citations=[
+                CitationItem(
+                    chunk_id=citation.chunk_id,
+                    source_path=citation.source_path,
+                    modality=citation.modality.value,
+                    page_number=citation.page_number,
+                    excerpt=citation.excerpt,
+                )
+                for citation in result.citations
+            ],
+            retrieval_mode=result.retrieval_mode,
+            corrected=result.corrected,
+            grounded=result.grounded,
+            retrieval_diagnostics=result.retrieval_diagnostics,
+            latency_ms=latency_ms,
+        )
+
+    # ------------------------------------------------------------------
+    # Health
+    # ------------------------------------------------------------------
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    # ------------------------------------------------------------------
+    # Synchronous ingest (paths)
+    # ------------------------------------------------------------------
+    @app.post("/ingest-paths", response_model=IngestResponse)
+    def ingest_paths(
+        payload: IngestPathsRequest,
+        tenant_id: str = Depends(rate_limit),
+        engine: MultimodalRAG = Depends(get_engine),
+    ) -> IngestResponse:
+        stats = engine.ingest_paths(
+            [Path(path) for path in payload.paths],
+            collection=payload.collection,
+            tenant_id=tenant_id,
+        )
+        return IngestResponse(**stats)
+
+    # ------------------------------------------------------------------
+    # Async ingest (file upload) — returns a job ID immediately
+    # ------------------------------------------------------------------
+    @app.post("/ingest-files", status_code=202)
+    async def ingest_files(
+        background_tasks: BackgroundTasks,
+        files: list[UploadFile] = File(...),
+        collection: str | None = None,
+        tenant_id: str = Depends(rate_limit),
+        engine: MultimodalRAG = Depends(get_engine),
+    ) -> dict:
+        upload_dir = engine.settings.storage_dir / "tmp_uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        saved_paths: list[Path] = []
+        for upload in files:
+            target = upload_dir / upload.filename
+            content = await upload.read()
+            target.write_bytes(content)
+            saved_paths.append(target)
+
+        job_id = str(uuid.uuid4())
+        _set_job(job_id, "pending", file_count=len(saved_paths))
+
+        def _run():
+            try:
+                _set_job(job_id, "running")
+                stats = engine.ingest_paths(saved_paths, collection=collection, tenant_id=tenant_id)
+                _set_job(job_id, "done", result=stats)
+            except Exception as exc:
+                _set_job(job_id, "error", error=str(exc))
+
+        background_tasks.add_task(_run)
+        return {"job_id": job_id, "status": "pending", "file_count": len(saved_paths)}
+
+    @app.get("/ingest-jobs/{job_id}")
+    def get_ingest_job(job_id: str) -> dict:
+        job = _JOB_STORE.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+        return job
+
+    # ------------------------------------------------------------------
+    # Query (sync)
+    # ------------------------------------------------------------------
+    @app.post("/query", response_model=QueryResponse)
+    def query(
+        payload: QueryRequest,
+        tenant_id: str = Depends(rate_limit),
+        engine: MultimodalRAG = Depends(get_engine),
+    ) -> QueryResponse:
+        start = perf_counter()
+        result = engine.query(
+            question=payload.question,
+            collection=payload.collection,
+            top_k=payload.top_k,
+            retrieval_mode=payload.retrieval_mode,
+            tenant_id=tenant_id,
+        )
+        latency_ms = (perf_counter() - start) * 1000.0
+        return to_query_response(result, latency_ms=latency_ms)
+
+    # ------------------------------------------------------------------
+    # Query stream (SSE) — real token streaming via synthesizer.stream()
+    # ------------------------------------------------------------------
+    @app.post("/query-stream")
+    def query_stream(
+        payload: QueryRequest,
+        tenant_id: str = Depends(rate_limit),
+        engine: MultimodalRAG = Depends(get_engine),
+    ) -> StreamingResponse:
+        from multimodal_rag.engine import MultimodalRAG as _E  # local import for clarity
+
+        start = perf_counter()
+
+        # Run retrieval first (fast), then stream generation tokens
+        result_no_answer = engine.query(
+            question=payload.question,
+            collection=payload.collection,
+            top_k=payload.top_k,
+            retrieval_mode=payload.retrieval_mode,
+            tenant_id=tenant_id,
+        )
+        hits = result_no_answer.hits
+        citations = result_no_answer.citations
+        retrieval_meta = {
+            "retrieval_mode": result_no_answer.retrieval_mode,
+            "corrected": result_no_answer.corrected,
+            "grounded": result_no_answer.grounded,
+        }
+
+        def stream():
+            yield _sse_event("meta", {**retrieval_meta, "latency_retrieval_ms": (perf_counter() - start) * 1000.0})
+            full_answer_parts: list[str] = []
+            for idx, token in enumerate(engine.synthesizer.stream(payload.question, hits), start=1):
+                full_answer_parts.append(token)
+                yield _sse_event("token", {"index": idx, "delta": token})
+            full_answer = "".join(full_answer_parts)
+            yield _sse_event(
+                "citations",
+                {"citations": [c.model_dump() for c in citations]},
+            )
+            yield _sse_event(
+                "done",
+                {
+                    "answer": full_answer,
+                    "source_count": len(hits),
+                    "citation_count": len(citations),
+                    "latency_ms": (perf_counter() - start) * 1000.0,
+                },
+            )
+
+        return StreamingResponse(stream(), media_type="text/event-stream")
+
+    # ------------------------------------------------------------------
+    # Multimodal query
+    # ------------------------------------------------------------------
+    @app.post("/query-multimodal", response_model=QueryResponse)
+    async def query_multimodal(
+        question: str = Form(default=""),
+        image: UploadFile | None = File(default=None),
+        collection: str | None = Form(default=None),
+        top_k: int | None = Form(default=None),
+        retrieval_mode: Literal["dense_only", "hybrid", "hybrid_rerank"] | None = Form(default=None),
+        tenant_id: str = Depends(rate_limit),
+        engine: MultimodalRAG = Depends(get_engine),
+    ) -> QueryResponse:
+        prompt = question.strip()
+        if not prompt and image is None:
+            raise HTTPException(status_code=400, detail="Provide either question text or an image.")
+        if top_k is not None and not (1 <= top_k <= 50):
+            raise HTTPException(status_code=422, detail="top_k must be between 1 and 50.")
+
+        query_image_path: Path | None = None
+        if image is not None:
+            query_dir = engine.settings.storage_dir / "tmp_queries"
+            query_dir.mkdir(parents=True, exist_ok=True)
+            filename = image.filename or "query_image.bin"
+            query_image_path = query_dir / filename
+            content = await image.read()
+            query_image_path.write_bytes(content)
+
+        query_text = prompt or "Find visually similar or related context for this image."
+        start = perf_counter()
+        result = engine.query(
+            question=query_text,
+            collection=collection,
+            top_k=top_k,
+            query_image_path=query_image_path,
+            retrieval_mode=retrieval_mode,
+            tenant_id=tenant_id,
+        )
+        latency_ms = (perf_counter() - start) * 1000.0
+        return to_query_response(result, latency_ms=latency_ms)
+
+    return app
+
+
+app = create_app()

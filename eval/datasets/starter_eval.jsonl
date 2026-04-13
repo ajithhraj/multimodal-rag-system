@@ -1,0 +1,11 @@
+{"case_id":"finance_revenue_q1","question":"What is the Q1 revenue reported in the financial report?","expected_source_paths":["financial_report.pdf"]}
+{"case_id":"finance_margin_table","question":"Which table contains gross margin by quarter?","expected_source_paths":["financial_report.pdf"]}
+{"case_id":"ops_incident_summary","question":"Summarize the root cause from the incident document.","expected_source_paths":["incident_review.pdf"]}
+{"case_id":"ops_sla_metric","question":"What SLA target is listed in the operations dashboard table?","expected_source_paths":["ops_metrics.csv"]}
+{"case_id":"policy_retention","question":"How long are audit logs retained?","expected_source_paths":["security_policy.pdf"]}
+{"case_id":"policy_encryption","question":"Which encryption standard is required for data at rest?","expected_source_paths":["security_policy.pdf"]}
+{"case_id":"hr_headcount","question":"What is the total headcount in the HR report?","expected_source_paths":["hr_summary.tsv"]}
+{"case_id":"sales_top_region","question":"Which region had the highest sales in the latest report?","expected_source_paths":["sales_report.pdf"]}
+# Optional multimodal examples (uncomment once query images exist):
+# {"case_id":"image_chart_pattern","question":"Find related trend explanation for this chart image.","query_image_path":"../query_images/trend_chart.png","expected_source_paths":["market_analysis.pdf"]}
+# {"case_id":"image_invoice_lookup","question":"Find context related to this invoice image.","query_image_path":"../query_images/invoice_scan.jpg","expected_source_paths":["billing_records.pdf"]}

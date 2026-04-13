@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Virtual env
+.venv/
+venv/
+
+# Local env/state
+.env
+.rag_store/
+tmp_uploads/
+tmp_queries/
+.ci_tmp/
