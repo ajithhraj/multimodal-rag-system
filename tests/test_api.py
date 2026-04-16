@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 
 from fastapi.testclient import TestClient
 
@@ -242,3 +243,64 @@ def test_query_accepts_valid_api_key_when_auth_enabled(tmp_path):
     )
     assert response.status_code == 200
     assert engine.last_tenant_id == "tenant-a"
+
+
+def test_ingest_jobs_lifecycle(tmp_path):
+    settings = _build_settings(tmp_path, ingestion_jobs_enabled=True)
+    engine = StubEngine(settings)
+    client = _build_client(engine)
+
+    create_response = client.post(
+        "/ingest-jobs",
+        json={"paths": ["./data"], "collection": "demo"},
+    )
+    assert create_response.status_code == 202
+    created = create_response.json()
+    job_id = created["job_id"]
+    assert created["status"] in {"queued", "running", "completed"}
+    assert created["tenant_id"] == "public"
+
+    final_payload = created
+    for _ in range(40):
+        status_response = client.get(f"/ingest-jobs/{job_id}")
+        assert status_response.status_code == 200
+        final_payload = status_response.json()
+        if final_payload["status"] in {"completed", "failed"}:
+            break
+        time.sleep(0.01)
+
+    assert final_payload["status"] == "completed"
+    assert final_payload["result"] is not None
+    assert final_payload["result"]["files"] == 1
+
+    list_response = client.get("/ingest-jobs")
+    assert list_response.status_code == 200
+    jobs = list_response.json()
+    assert any(job["job_id"] == job_id for job in jobs)
+
+
+def test_ingest_jobs_returns_404_for_unknown_id(tmp_path):
+    settings = _build_settings(tmp_path, ingestion_jobs_enabled=True)
+    engine = StubEngine(settings)
+    client = _build_client(engine)
+
+    response = client.get("/ingest-jobs/missing-job")
+    assert response.status_code == 404
+
+
+def test_ingest_jobs_can_be_disabled(tmp_path):
+    settings = _build_settings(tmp_path, ingestion_jobs_enabled=False)
+    engine = StubEngine(settings)
+    client = _build_client(engine)
+
+    response = client.post("/ingest-jobs", json={"paths": ["./data"]})
+    assert response.status_code == 503
+
+
+def test_ingest_jobs_requires_non_empty_paths(tmp_path):
+    settings = _build_settings(tmp_path, ingestion_jobs_enabled=True)
+    engine = StubEngine(settings)
+    client = _build_client(engine)
+
+    response = client.post("/ingest-jobs", json={"paths": []})
+    assert response.status_code == 422

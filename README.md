@@ -108,6 +108,9 @@ Use the operational scripts for repeatable local deployment:
 
 - `GET /health`
 - `POST /ingest-paths`
+- `POST /ingest-jobs` (enqueue background ingestion)
+- `GET /ingest-jobs/{job_id}` (check ingestion status)
+- `GET /ingest-jobs` (list recent ingestion jobs)
 - `POST /ingest-files`
 - `POST /query`
 - `POST /query-stream` (SSE stream: meta, token deltas, citations, done)
@@ -132,6 +135,15 @@ curl -X POST http://localhost:8000/query-multimodal \
   -H "X-Tenant-ID: acme" \
   -F "question=Find similar chart patterns" \
   -F "image=@./data/query_chart.png"
+```
+
+Example async ingestion job:
+
+```bash
+curl -X POST http://localhost:8000/ingest-jobs \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-ID: acme" \
+  -d "{\"paths\": [\"./data\"], \"collection\": \"default\"}"
 ```
 
 ## Observability (OpenTelemetry)
@@ -213,6 +225,10 @@ Important env variables:
 - `MMRAG_CHUNK_SIZE`
 - `MMRAG_CHUNK_OVERLAP`
 - `MMRAG_INGESTION_SKIP_UNCHANGED_FILES`
+- `MMRAG_INGESTION_JOBS_ENABLED`
+- `MMRAG_INGESTION_JOBS_MAX_WORKERS`
+- `MMRAG_INGESTION_JOBS_TTL_SECONDS`
+- `MMRAG_INGESTION_JOBS_MAX_RETAINED`
 - `MMRAG_ADAPTIVE_CHUNKING_ENABLED`
 - `MMRAG_ADAPTIVE_CHUNKING_MIN_SIZE`
 - `MMRAG_ADAPTIVE_CHUNKING_TABLE_FACTOR`

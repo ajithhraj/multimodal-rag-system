@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     adaptive_chunking_overlap_factor: float = Field(default=0.8, ge=0.2, le=1.2)
     max_context_chunks: int = 8
     ingestion_skip_unchanged_files: bool = True
+    ingestion_jobs_enabled: bool = True
+    ingestion_jobs_max_workers: int = Field(default=1, ge=1, le=8)
+    ingestion_jobs_ttl_seconds: int = Field(default=86400, ge=60, le=604800)
+    ingestion_jobs_max_retained: int = Field(default=200, ge=20, le=5000)
 
     orchestrator: Literal["langchain", "llamaindex"] = "langchain"
 

@@ -4,13 +4,15 @@ from pathlib import Path
 from time import perf_counter
 from typing import Literal
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 import orjson
 
 from multimodal_rag.api.deps import get_engine, resolve_tenant_id
+from multimodal_rag.api.jobs import IngestJobManager, IngestJobRecord
 from multimodal_rag.api.schemas import (
     CitationItem,
+    IngestJobResponse,
     IngestPathsRequest,
     IngestResponse,
     QueryRequest,
@@ -26,9 +28,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     runtime_settings = settings or get_settings()
     telemetry = TelemetryManager(runtime_settings)
     telemetry.setup()
+    ingest_jobs = IngestJobManager(
+        max_workers=runtime_settings.ingestion_jobs_max_workers,
+        ttl_seconds=runtime_settings.ingestion_jobs_ttl_seconds,
+        max_retained=runtime_settings.ingestion_jobs_max_retained,
+    )
     app = FastAPI(title="Multimodal RAG API", version="0.1.0")
     app.state.settings = runtime_settings
     app.state.telemetry = telemetry
+    app.state.ingest_jobs = ingest_jobs
 
     def _sse_event(event: str, payload: dict) -> str:
         json_payload = orjson.dumps(payload).decode("utf-8")
@@ -78,6 +86,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         telemetry.record_http(request.method, route, status_code=status_code, duration_ms=duration_ms)
         return response
 
+    @app.on_event("shutdown")
+    def _shutdown_job_executor() -> None:
+        ingest_jobs.shutdown()
+
     def to_query_response(result, latency_ms: float) -> QueryResponse:
         return QueryResponse(
             answer=result.answer,
@@ -107,6 +119,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             latency_ms=latency_ms,
         )
 
+    def _to_ingest_job_response(job: IngestJobRecord) -> IngestJobResponse:
+        return IngestJobResponse(
+            job_id=job.job_id,
+            status=job.status,
+            tenant_id=job.tenant_id,
+            collection=job.collection,
+            paths=job.paths,
+            submitted_at=job.submitted_at,
+            started_at=job.started_at,
+            finished_at=job.finished_at,
+            result=job.result,
+            error=job.error,
+        )
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
@@ -123,6 +149,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             tenant_id=tenant_id,
         )
         return IngestResponse(**stats)
+
+    @app.post("/ingest-jobs", response_model=IngestJobResponse, status_code=202)
+    def create_ingest_job(
+        payload: IngestPathsRequest,
+        tenant_id: str = Depends(resolve_tenant_id),
+        engine: MultimodalRAG = Depends(get_engine),
+    ) -> IngestJobResponse:
+        if not runtime_settings.ingestion_jobs_enabled:
+            raise HTTPException(status_code=503, detail="Async ingestion jobs are disabled.")
+        paths = [Path(path) for path in payload.paths]
+        job = ingest_jobs.submit(
+            engine=engine,
+            paths=paths,
+            collection=payload.collection,
+            tenant_id=tenant_id,
+        )
+        return _to_ingest_job_response(job)
+
+    @app.get("/ingest-jobs/{job_id}", response_model=IngestJobResponse)
+    def get_ingest_job(job_id: str) -> IngestJobResponse:
+        if not runtime_settings.ingestion_jobs_enabled:
+            raise HTTPException(status_code=503, detail="Async ingestion jobs are disabled.")
+        job = ingest_jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Ingestion job not found.")
+        return _to_ingest_job_response(job)
+
+    @app.get("/ingest-jobs", response_model=list[IngestJobResponse])
+    def list_ingest_jobs(limit: int = Query(default=50, ge=1, le=200)) -> list[IngestJobResponse]:
+        if not runtime_settings.ingestion_jobs_enabled:
+            raise HTTPException(status_code=503, detail="Async ingestion jobs are disabled.")
+        return [_to_ingest_job_response(job) for job in ingest_jobs.list(limit=limit)]
 
     @app.post("/ingest-files", response_model=IngestResponse)
     async def ingest_files(

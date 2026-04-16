@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
 class IngestPathsRequest(BaseModel):
-    paths: list[str]
+    paths: list[str] = Field(min_length=1)
     collection: str | None = None
 
 
@@ -16,6 +17,22 @@ class IngestResponse(BaseModel):
     text: int
     table: int
     image: int
+
+
+IngestJobState = Literal["queued", "running", "completed", "failed"]
+
+
+class IngestJobResponse(BaseModel):
+    job_id: str
+    status: IngestJobState
+    tenant_id: str
+    collection: str | None = None
+    paths: list[str]
+    submitted_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    result: IngestResponse | None = None
+    error: str | None = None
 
 
 class QueryRequest(BaseModel):
