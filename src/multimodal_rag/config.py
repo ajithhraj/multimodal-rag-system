@@ -32,34 +32,22 @@ class Settings(BaseSettings):
     ingestion_skip_unchanged_files: bool = True
 
     orchestrator: Literal["langchain", "llamaindex"] = "langchain"
-
-<<<<<<< HEAD
-    # LLM provider selection: "openai" | "anthropic" | "ollama" | "llamaindex"
     llm_provider: Literal["openai", "anthropic", "ollama", "llamaindex"] = "openai"
 
-    # OpenAI
-=======
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
     openai_api_key: str | None = None
     chat_model: str = "gpt-4.1-mini"
     vision_model: str = "gpt-4.1-mini"
     text_embedding_model: str = "text-embedding-3-small"
 
-<<<<<<< HEAD
-    # Anthropic
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-sonnet-4-5"
 
-    # Ollama (local)
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3"
 
-    # Rate limiting (requests per minute per tenant, 0 = disabled)
     rate_limit_rpm: int = Field(default=60, ge=0, le=10000)
     rate_limit_enabled: bool = False
 
-=======
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
     qdrant_url: str | None = None
     qdrant_api_key: str | None = None
     qdrant_path: Path = Path(".rag_store/qdrant")
@@ -97,7 +85,6 @@ class Settings(BaseSettings):
     auth_enabled: bool = False
     auth_api_key_header: str = "X-API-Key"
     auth_tenant_header: str = "X-Tenant-ID"
-    # Format: tenant_a:key_a,tenant_b:key_b
     auth_tenant_api_keys: str | None = None
 
     @staticmethod

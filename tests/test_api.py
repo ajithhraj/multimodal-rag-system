@@ -230,3 +230,42 @@ def test_query_accepts_valid_api_key_when_auth_enabled(tmp_path):
     )
     assert response.status_code == 200
     assert engine.last_tenant_id == "tenant-a"
+
+
+def test_ingest_jobs_list_and_delete(tmp_path):
+    settings = _build_settings(tmp_path)
+    engine = StubEngine(settings)
+    client = _build_client(engine)
+
+    files = {
+        "files": ("sample.pdf", b"fake-pdf-bytes", "application/pdf"),
+    }
+    create_response = client.post("/ingest-files", files=files)
+    assert create_response.status_code == 202
+    created = create_response.json()
+    assert created["status"] in {"pending", "running", "done"}
+    job_id = created["job_id"]
+
+    list_response = client.get("/ingest-jobs")
+    assert list_response.status_code == 200
+    jobs = list_response.json()
+    assert any(job["job_id"] == job_id for job in jobs)
+
+    get_response = client.get(f"/ingest-jobs/{job_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["job_id"] == job_id
+
+    delete_response = client.delete(f"/ingest-jobs/{job_id}")
+    assert delete_response.status_code == 204
+
+    missing_response = client.get(f"/ingest-jobs/{job_id}")
+    assert missing_response.status_code == 404
+
+
+def test_delete_ingest_job_returns_404_for_unknown_id(tmp_path):
+    settings = _build_settings(tmp_path)
+    engine = StubEngine(settings)
+    client = _build_client(engine)
+
+    response = client.delete("/ingest-jobs/unknown-id")
+    assert response.status_code == 404

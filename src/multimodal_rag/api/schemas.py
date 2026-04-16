@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -16,6 +17,19 @@ class IngestResponse(BaseModel):
     text: int
     table: int
     image: int
+
+
+IngestJobStatus = Literal["pending", "running", "done", "error"]
+
+
+class IngestJobItem(BaseModel):
+    job_id: str
+    status: IngestJobStatus
+    created_at: datetime
+    updated_at: datetime
+    file_count: int | None = None
+    result: IngestResponse | None = None
+    error: str | None = None
 
 
 class QueryRequest(BaseModel):
