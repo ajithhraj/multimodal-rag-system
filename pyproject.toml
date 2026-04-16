@@ -38,15 +38,12 @@ vision = [
   "sentence-transformers>=3.0.0",
   "pytesseract>=0.3.10"
 ]
-<<<<<<< HEAD
 anthropic = [
   "anthropic>=0.26.0"
 ]
 ollama = [
   "requests>=2.32.0"
 ]
-=======
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
 dev = [
   "httpx>=0.28.0",
   "pytest>=8.3.0",

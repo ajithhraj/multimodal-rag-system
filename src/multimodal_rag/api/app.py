@@ -1,24 +1,15 @@
 from __future__ import annotations
 
-<<<<<<< HEAD
 import time
 import uuid
 from collections import defaultdict, deque
-=======
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
 from pathlib import Path
 from time import perf_counter
 from typing import Literal
 
-<<<<<<< HEAD
 import orjson
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
-=======
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
-import orjson
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
 
 from multimodal_rag.api.deps import get_engine, resolve_tenant_id
 from multimodal_rag.api.schemas import (
@@ -31,21 +22,12 @@ from multimodal_rag.api.schemas import (
 )
 from multimodal_rag.engine import MultimodalRAG
 
-<<<<<<< HEAD
-# ---------------------------------------------------------------------------
-# In-memory job store (replace with Redis/DB for multi-process deployments)
-# ---------------------------------------------------------------------------
 _JOB_STORE: dict[str, dict] = {}
+_RATE_WINDOWS: dict[str, deque[float]] = defaultdict(deque)
 
 
 def _set_job(job_id: str, status: str, **extra) -> None:
     _JOB_STORE[job_id] = {"job_id": job_id, "status": status, **extra}
-
-
-# ---------------------------------------------------------------------------
-# In-memory rate limiter (sliding window per tenant)
-# ---------------------------------------------------------------------------
-_RATE_WINDOWS: dict[str, deque] = defaultdict(deque)
 
 
 def _check_rate_limit(tenant_id: str, rpm: int) -> None:
@@ -68,9 +50,6 @@ def _check_rate_limit(tenant_id: str, rpm: int) -> None:
 def create_app() -> FastAPI:
     app = FastAPI(title="Multimodal RAG API", version="0.2.0")
 
-    # ------------------------------------------------------------------
-    # Rate-limit middleware dependency
-    # ------------------------------------------------------------------
     def rate_limit(
         request: Request,
         tenant_id: str = Depends(resolve_tenant_id),
@@ -80,31 +59,9 @@ def create_app() -> FastAPI:
             _check_rate_limit(tenant_id, engine.settings.rate_limit_rpm)
         return tenant_id
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-=======
-
-def create_app() -> FastAPI:
-    app = FastAPI(title="Multimodal RAG API", version="0.1.0")
-
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
     def _sse_event(event: str, payload: dict) -> str:
         json_payload = orjson.dumps(payload).decode("utf-8")
         return f"event: {event}\ndata: {json_payload}\n\n"
-
-    def _answer_chunks(answer: str, chunk_size: int = 64):
-        clean = answer or ""
-<<<<<<< HEAD
-        for index in range(0, len(clean), chunk_size):
-            yield clean[index: index + chunk_size]
-=======
-        if not clean:
-            yield ""
-            return
-        for index in range(0, len(clean), chunk_size):
-            yield clean[index : index + chunk_size]
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
 
     def to_query_response(result, latency_ms: float) -> QueryResponse:
         return QueryResponse(
@@ -135,30 +92,14 @@ def create_app() -> FastAPI:
             latency_ms=latency_ms,
         )
 
-<<<<<<< HEAD
-    # ------------------------------------------------------------------
-    # Health
-    # ------------------------------------------------------------------
-=======
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-<<<<<<< HEAD
-    # ------------------------------------------------------------------
-    # Synchronous ingest (paths)
-    # ------------------------------------------------------------------
     @app.post("/ingest-paths", response_model=IngestResponse)
     def ingest_paths(
         payload: IngestPathsRequest,
         tenant_id: str = Depends(rate_limit),
-=======
-    @app.post("/ingest-paths", response_model=IngestResponse)
-    def ingest_paths(
-        payload: IngestPathsRequest,
-        tenant_id: str = Depends(resolve_tenant_id),
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
         engine: MultimodalRAG = Depends(get_engine),
     ) -> IngestResponse:
         stats = engine.ingest_paths(
@@ -168,10 +109,6 @@ def create_app() -> FastAPI:
         )
         return IngestResponse(**stats)
 
-<<<<<<< HEAD
-    # ------------------------------------------------------------------
-    # Async ingest (file upload) — returns a job ID immediately
-    # ------------------------------------------------------------------
     @app.post("/ingest-files", status_code=202)
     async def ingest_files(
         background_tasks: BackgroundTasks,
@@ -180,15 +117,6 @@ def create_app() -> FastAPI:
         tenant_id: str = Depends(rate_limit),
         engine: MultimodalRAG = Depends(get_engine),
     ) -> dict:
-=======
-    @app.post("/ingest-files", response_model=IngestResponse)
-    async def ingest_files(
-        files: list[UploadFile] = File(...),
-        collection: str | None = None,
-        tenant_id: str = Depends(resolve_tenant_id),
-        engine: MultimodalRAG = Depends(get_engine),
-    ) -> IngestResponse:
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
         upload_dir = engine.settings.storage_dir / "tmp_uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -199,11 +127,10 @@ def create_app() -> FastAPI:
             target.write_bytes(content)
             saved_paths.append(target)
 
-<<<<<<< HEAD
         job_id = str(uuid.uuid4())
         _set_job(job_id, "pending", file_count=len(saved_paths))
 
-        def _run():
+        def _run() -> None:
             try:
                 _set_job(job_id, "running")
                 stats = engine.ingest_paths(saved_paths, collection=collection, tenant_id=tenant_id)
@@ -221,26 +148,10 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
         return job
 
-    # ------------------------------------------------------------------
-    # Query (sync)
-    # ------------------------------------------------------------------
     @app.post("/query", response_model=QueryResponse)
     def query(
         payload: QueryRequest,
         tenant_id: str = Depends(rate_limit),
-=======
-        stats = engine.ingest_paths(
-            saved_paths,
-            collection=collection,
-            tenant_id=tenant_id,
-        )
-        return IngestResponse(**stats)
-
-    @app.post("/query", response_model=QueryResponse)
-    def query(
-        payload: QueryRequest,
-        tenant_id: str = Depends(resolve_tenant_id),
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
         engine: MultimodalRAG = Depends(get_engine),
     ) -> QueryResponse:
         start = perf_counter()
@@ -254,60 +165,22 @@ def create_app() -> FastAPI:
         latency_ms = (perf_counter() - start) * 1000.0
         return to_query_response(result, latency_ms=latency_ms)
 
-<<<<<<< HEAD
-    # ------------------------------------------------------------------
-    # Query stream (SSE) — real token streaming via synthesizer.stream()
-    # ------------------------------------------------------------------
     @app.post("/query-stream")
     def query_stream(
         payload: QueryRequest,
         tenant_id: str = Depends(rate_limit),
         engine: MultimodalRAG = Depends(get_engine),
     ) -> StreamingResponse:
-        from multimodal_rag.engine import MultimodalRAG as _E  # local import for clarity
-
         start = perf_counter()
-
-        # Run retrieval first (fast), then stream generation tokens
-        result_no_answer = engine.query(
-=======
-    @app.post("/query-stream")
-    def query_stream(
-        payload: QueryRequest,
-        tenant_id: str = Depends(resolve_tenant_id),
-        engine: MultimodalRAG = Depends(get_engine),
-    ) -> StreamingResponse:
-        start = perf_counter()
-        result = engine.query(
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
+        retrieval_result = engine.query(
             question=payload.question,
             collection=payload.collection,
             top_k=payload.top_k,
             retrieval_mode=payload.retrieval_mode,
             tenant_id=tenant_id,
         )
-<<<<<<< HEAD
-        hits = result_no_answer.hits
-        citations = result_no_answer.citations
-        retrieval_meta = {
-            "retrieval_mode": result_no_answer.retrieval_mode,
-            "corrected": result_no_answer.corrected,
-            "grounded": result_no_answer.grounded,
-        }
-
-        def stream():
-            yield _sse_event("meta", {**retrieval_meta, "latency_retrieval_ms": (perf_counter() - start) * 1000.0})
-            full_answer_parts: list[str] = []
-            for idx, token in enumerate(engine.synthesizer.stream(payload.question, hits), start=1):
-                full_answer_parts.append(token)
-                yield _sse_event("token", {"index": idx, "delta": token})
-            full_answer = "".join(full_answer_parts)
-            yield _sse_event(
-                "citations",
-                {"citations": [c.model_dump() for c in citations]},
-=======
-        latency_ms = (perf_counter() - start) * 1000.0
-        response = to_query_response(result, latency_ms=latency_ms)
+        retrieval_latency_ms = (perf_counter() - start) * 1000.0
+        response = to_query_response(retrieval_result, latency_ms=retrieval_latency_ms)
 
         def stream():
             yield _sse_event(
@@ -316,40 +189,30 @@ def create_app() -> FastAPI:
                     "retrieval_mode": response.retrieval_mode,
                     "corrected": response.corrected,
                     "grounded": response.grounded,
-                    "latency_ms": response.latency_ms,
+                    "latency_retrieval_ms": response.latency_ms,
                 },
             )
-            for index, delta in enumerate(_answer_chunks(response.answer), start=1):
-                yield _sse_event("token", {"index": index, "delta": delta})
+            full_answer_parts: list[str] = []
+            for idx, token in enumerate(engine.synthesizer.stream(payload.question, retrieval_result.hits), start=1):
+                full_answer_parts.append(token)
+                yield _sse_event("token", {"index": idx, "delta": token})
+            full_answer = "".join(full_answer_parts)
             yield _sse_event(
                 "citations",
                 {"citations": [citation.model_dump() for citation in response.citations]},
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
             )
             yield _sse_event(
                 "done",
                 {
-<<<<<<< HEAD
                     "answer": full_answer,
-                    "source_count": len(hits),
-                    "citation_count": len(citations),
-                    "latency_ms": (perf_counter() - start) * 1000.0,
-=======
-                    "answer": response.answer,
                     "source_count": len(response.sources),
                     "citation_count": len(response.citations),
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
+                    "latency_ms": (perf_counter() - start) * 1000.0,
                 },
             )
 
         return StreamingResponse(stream(), media_type="text/event-stream")
 
-<<<<<<< HEAD
-    # ------------------------------------------------------------------
-    # Multimodal query
-    # ------------------------------------------------------------------
-=======
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
     @app.post("/query-multimodal", response_model=QueryResponse)
     async def query_multimodal(
         question: str = Form(default=""),
@@ -357,11 +220,7 @@ def create_app() -> FastAPI:
         collection: str | None = Form(default=None),
         top_k: int | None = Form(default=None),
         retrieval_mode: Literal["dense_only", "hybrid", "hybrid_rerank"] | None = Form(default=None),
-<<<<<<< HEAD
         tenant_id: str = Depends(rate_limit),
-=======
-        tenant_id: str = Depends(resolve_tenant_id),
->>>>>>> 68ea0fea322a20c68be086fc130f76ea2035a1a7
         engine: MultimodalRAG = Depends(get_engine),
     ) -> QueryResponse:
         prompt = question.strip()
