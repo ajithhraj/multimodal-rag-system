@@ -110,6 +110,7 @@ Use the operational scripts for repeatable local deployment:
 - `POST /ingest-paths`
 - `POST /ingest-jobs` (enqueue background ingestion)
 - `GET /ingest-jobs/{job_id}` (check ingestion status)
+- `POST /ingest-jobs/{job_id}/cancel` (cancel queued ingestion job)
 - `GET /ingest-jobs` (list recent ingestion jobs)
 - `POST /ingest-files`
 - `POST /query`

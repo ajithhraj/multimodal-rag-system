@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import Future
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -46,6 +47,7 @@ class IngestJobManager:
         self._ttl = timedelta(seconds=ttl_seconds)
         self._max_retained = max_retained
         self._jobs: dict[str, IngestJobRecord] = {}
+        self._futures: dict[str, Future[None]] = {}
         self._lock = threading.Lock()
 
     def _cleanup_locked(self, now: datetime) -> None:
@@ -93,7 +95,9 @@ class IngestJobManager:
             self._cleanup_locked(submitted_at)
             self._jobs[record.job_id] = record
 
-        self._executor.submit(self._run_job, record.job_id, engine, paths, collection, tenant_id)
+        future = self._executor.submit(self._run_job, record.job_id, engine, paths, collection, tenant_id)
+        with self._lock:
+            self._futures[record.job_id] = future
         return record.copy()
 
     def _run_job(
@@ -135,6 +139,9 @@ class IngestJobManager:
                 record.result = None
                 record.error = str(exc)
                 self._cleanup_locked(finished_at)
+        finally:
+            with self._lock:
+                self._futures.pop(job_id, None)
 
     def get(self, job_id: str) -> IngestJobRecord | None:
         with self._lock:
@@ -153,6 +160,28 @@ class IngestJobManager:
                 reverse=True,
             )
             return [job.copy() for job in records[:limit]]
+
+    def cancel(self, job_id: str) -> IngestJobRecord | None:
+        with self._lock:
+            record = self._jobs.get(job_id)
+            if record is None:
+                return None
+            if record.status in {"completed", "failed", "cancelled"}:
+                return record.copy()
+
+            future = self._futures.get(job_id)
+            if future is None:
+                return record.copy()
+
+            if future.cancel():
+                finished_at = _utc_now()
+                record.status = "cancelled"
+                record.finished_at = finished_at
+                record.result = None
+                record.error = "Cancelled by request."
+                self._futures.pop(job_id, None)
+                self._cleanup_locked(finished_at)
+            return record.copy()
 
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)

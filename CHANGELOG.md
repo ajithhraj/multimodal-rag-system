@@ -8,6 +8,7 @@ All notable changes to this project are documented here.
 - Background ingestion jobs API:
   - `POST /ingest-jobs` to queue ingestion
   - `GET /ingest-jobs/{job_id}` to inspect state
+  - `POST /ingest-jobs/{job_id}/cancel` to cancel queued jobs
   - `GET /ingest-jobs` to list recent jobs
 - In-memory job manager with lifecycle states (`queued`, `running`, `completed`, `failed`)
 - Config knobs for async ingestion workers, retention, and TTL

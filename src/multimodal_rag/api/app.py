@@ -207,6 +207,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Ingestion job not found.")
         return _to_ingest_job_response(job)
 
+    @app.post("/ingest-jobs/{job_id}/cancel", response_model=IngestJobResponse)
+    def cancel_ingest_job(job_id: str) -> IngestJobResponse:
+        if not runtime_settings.ingestion_jobs_enabled:
+            raise HTTPException(status_code=503, detail="Async ingestion jobs are disabled.")
+        job = ingest_jobs.cancel(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Ingestion job not found.")
+        if job.status != "cancelled":
+            raise HTTPException(status_code=409, detail=f"Cannot cancel job in '{job.status}' state.")
+        return _to_ingest_job_response(job)
+
     @app.get("/ingest-jobs", response_model=list[IngestJobResponse])
     def list_ingest_jobs(limit: int = Query(default=50, ge=1, le=200)) -> list[IngestJobResponse]:
         if not runtime_settings.ingestion_jobs_enabled:

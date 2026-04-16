@@ -57,6 +57,16 @@ class StubEngine:
         )
 
 
+class SlowStubEngine(StubEngine):
+    def __init__(self, settings: Settings, ingest_delay: float = 0.2):
+        super().__init__(settings)
+        self.ingest_delay = ingest_delay
+
+    def ingest_paths(self, paths, collection=None, tenant_id=None):
+        time.sleep(self.ingest_delay)
+        return super().ingest_paths(paths, collection=collection, tenant_id=tenant_id)
+
+
 def _build_settings(tmp_path: Path, **overrides) -> Settings:
     return Settings(storage_dir=tmp_path, **overrides)
 
@@ -322,3 +332,29 @@ def test_query_rate_limit_returns_429(tmp_path):
     second = client.post("/query", json={"question": "hello"})
     assert second.status_code == 429
     assert "Retry-After" in second.headers
+
+
+def test_ingest_jobs_can_cancel_queued_job(tmp_path):
+    settings = _build_settings(
+        tmp_path,
+        ingestion_jobs_enabled=True,
+        ingestion_jobs_max_workers=1,
+    )
+    engine = SlowStubEngine(settings, ingest_delay=0.25)
+    client = _build_client(engine)
+
+    first_job = client.post("/ingest-jobs", json={"paths": ["./data"], "collection": "demo"})
+    assert first_job.status_code == 202
+
+    queued_job = client.post("/ingest-jobs", json={"paths": ["./data"], "collection": "demo"})
+    assert queued_job.status_code == 202
+    queued_job_id = queued_job.json()["job_id"]
+
+    cancel_response = client.post(f"/ingest-jobs/{queued_job_id}/cancel")
+    assert cancel_response.status_code == 200
+    cancelled_payload = cancel_response.json()
+    assert cancelled_payload["status"] == "cancelled"
+
+    job_status = client.get(f"/ingest-jobs/{queued_job_id}")
+    assert job_status.status_code == 200
+    assert job_status.json()["status"] == "cancelled"

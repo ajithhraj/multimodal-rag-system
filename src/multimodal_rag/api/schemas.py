@@ -19,7 +19,7 @@ class IngestResponse(BaseModel):
     image: int
 
 
-IngestJobState = Literal["queued", "running", "completed", "failed"]
+IngestJobState = Literal["queued", "running", "completed", "failed", "cancelled"]
 
 
 class IngestJobResponse(BaseModel):
