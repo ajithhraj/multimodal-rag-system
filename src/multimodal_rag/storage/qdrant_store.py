@@ -146,3 +146,12 @@ class QdrantStore(VectorStore):
             wait=True,
         )
         return len(point_ids)
+
+    def delete_collection(self, collection: str) -> int:
+        removed = 0
+        for modality in ("text", "table", "image"):
+            name = self._collection_name(collection, modality)
+            if self.client.collection_exists(name):
+                self.client.delete_collection(name)
+                removed += 1
+        return removed

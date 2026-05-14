@@ -94,9 +94,12 @@ class AnswerSynthesizer:
     def __init__(self, settings: Settings):
         self.settings = settings
         self._llm_provider = settings.resolved_llm_provider()
+        self._strict = settings.strict_api_only_mode()
 
     def _get_langchain_llm(self):
         if not self.settings.has_openai_api_key():
+            if self._strict:
+                raise RuntimeError("OpenAI API key is required for answer generation in API-only mode.")
             return None
         try:
             from langchain_openai import ChatOpenAI
@@ -107,6 +110,8 @@ class AnswerSynthesizer:
                 temperature=0.0,
             )
         except Exception as exc:
+            if self._strict:
+                raise RuntimeError("Could not initialize OpenAI chat client in API-only mode.") from exc
             logger.warning("Could not initialize LangChain/OpenAI client: %s", exc)
             return None
 
@@ -121,6 +126,8 @@ class AnswerSynthesizer:
     def _generate_langchain(self, question: str, hits: list[RetrievalHit]) -> str:
         llm = self._get_langchain_llm()
         if not llm:
+            if self._strict:
+                raise RuntimeError("OpenAI generation is unavailable in API-only mode.")
             return self._generate_local(question, hits)
         context = _format_context(hits)
         try:
@@ -134,12 +141,16 @@ class AnswerSynthesizer:
             )
             return self._chunk_to_text(response.content).strip()
         except Exception as exc:
+            if self._strict:
+                raise RuntimeError(f"OpenAI generation failed: {exc}") from exc
             logger.warning("LangChain generation failed: %s", exc)
             return self._generate_local(question, hits)
 
     def _stream_langchain(self, question: str, hits: list[RetrievalHit]) -> Iterator[str]:
         llm = self._get_langchain_llm()
         if not llm:
+            if self._strict:
+                raise RuntimeError("OpenAI streaming is unavailable in API-only mode.")
             yield self._generate_local(question, hits)
             return
 
@@ -157,6 +168,8 @@ class AnswerSynthesizer:
                 if text:
                     yield text
         except Exception as exc:
+            if self._strict:
+                raise RuntimeError(f"OpenAI streaming failed: {exc}") from exc
             logger.warning("LangChain streaming failed: %s", exc)
             yield self._generate_local(question, hits)
 

@@ -11,12 +11,23 @@ class IngestPathsRequest(BaseModel):
     collection: str | None = None
 
 
+class ResetCollectionRequest(BaseModel):
+    collection: str | None = None
+
+
 class IngestResponse(BaseModel):
     files: int
     chunks: int
     text: int
     table: int
     image: int
+
+
+class ResetCollectionResponse(BaseModel):
+    collection: str
+    vector_removed: int
+    lexical_removed: int
+    manifest_removed: int
 
 
 IngestJobStatus = Literal["pending", "running", "done", "error"]

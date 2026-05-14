@@ -83,6 +83,14 @@ class LexicalIndex:
         self._cache.pop(collection, None)
         return removed
 
+    def delete_collection(self, collection: str) -> bool:
+        path = self._index_path(collection)
+        if not path.exists():
+            return False
+        path.unlink()
+        self._cache.pop(collection, None)
+        return True
+
     def _load_state(self, collection: str) -> _LexicalState:
         path = self._index_path(collection)
         if not path.exists():

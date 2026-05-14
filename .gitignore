@@ -15,3 +15,5 @@ venv/
 tmp_uploads/
 tmp_queries/
 .ci_tmp/
+uvicorn_stdout.log
+uvicorn_stderr.log

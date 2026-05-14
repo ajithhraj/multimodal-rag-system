@@ -46,6 +46,11 @@ def test_settings_stays_local_without_key():
     assert settings.resolved_llm_provider() == "local"
 
 
+def test_settings_strict_api_only_mode_for_openai_provider():
+    settings = Settings(storage_dir=Path("."), openai_api_key="sk-test", llm_provider="openai")
+    assert settings.strict_api_only_mode() is True
+
+
 def test_text_embedder_uses_openai_embeddings_when_key_present(monkeypatch, tmp_path):
     monkeypatch.setattr(providers, "OpenAIEmbeddings", FakeOpenAIEmbeddings)
     settings = Settings(storage_dir=tmp_path, openai_api_key="sk-test")
@@ -59,6 +64,18 @@ def test_text_embedder_uses_openai_embeddings_when_key_present(monkeypatch, tmp_
     assert FakeOpenAIEmbeddings.last_query == "hello"
     assert documents == [[1.0, 5.0], [2.0, 4.0]]
     assert query == [42.0, 5.0]
+
+
+def test_text_embedder_raises_without_openai_client_in_strict_mode(monkeypatch, tmp_path):
+    monkeypatch.setattr(providers, "OpenAIEmbeddings", None)
+    settings = Settings(storage_dir=tmp_path, openai_api_key="sk-test", llm_provider="openai")
+
+    try:
+        providers.TextEmbedder(settings)
+    except RuntimeError as exc:
+        assert "langchain_openai" in str(exc)
+    else:
+        raise AssertionError("Expected TextEmbedder to fail in strict API-only mode")
 
 
 def test_vision_embedder_uses_openai_text_path_for_query_image(monkeypatch, tmp_path):
@@ -79,4 +96,4 @@ def test_vision_embedder_uses_openai_text_path_for_query_image(monkeypatch, tmp_
     assert FakeOpenAIEmbeddings.last_query is not None
     assert "find a chart" in FakeOpenAIEmbeddings.last_query
     assert "caption for query.png" in FakeOpenAIEmbeddings.last_query
-    assert "ocr data" in FakeOpenAIEmbeddings.last_query
+    assert "ocr data" not in FakeOpenAIEmbeddings.last_query

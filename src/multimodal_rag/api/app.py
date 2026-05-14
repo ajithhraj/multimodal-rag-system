@@ -20,6 +20,8 @@ from multimodal_rag.api.schemas import (
     IngestResponse,
     QueryRequest,
     QueryResponse,
+    ResetCollectionRequest,
+    ResetCollectionResponse,
     SourceItem,
 )
 from multimodal_rag.engine import MultimodalRAG
@@ -146,6 +148,9 @@ def create_app() -> FastAPI:
         for index in range(0, len(text), chunk_size):
             yield text[index : index + chunk_size]
 
+    def _service_unavailable(exc: Exception) -> HTTPException:
+        return HTTPException(status_code=503, detail=str(exc))
+
     def to_query_response(result, latency_ms: float) -> QueryResponse:
         return QueryResponse(
             answer=result.answer,
@@ -202,12 +207,24 @@ def create_app() -> FastAPI:
         tenant_id: str = Depends(rate_limit),
         engine: MultimodalRAG = Depends(get_engine),
     ) -> IngestResponse:
-        stats = engine.ingest_paths(
-            [Path(path) for path in payload.paths],
-            collection=payload.collection,
-            tenant_id=tenant_id,
-        )
+        try:
+            stats = engine.ingest_paths(
+                [Path(path) for path in payload.paths],
+                collection=payload.collection,
+                tenant_id=tenant_id,
+            )
+        except RuntimeError as exc:
+            raise _service_unavailable(exc) from exc
         return IngestResponse(**stats)
+
+    @app.post("/reset-collection", response_model=ResetCollectionResponse)
+    def reset_collection(
+        payload: ResetCollectionRequest,
+        tenant_id: str = Depends(rate_limit),
+        engine: MultimodalRAG = Depends(get_engine),
+    ) -> ResetCollectionResponse:
+        result = engine.reset_collection(collection=payload.collection, tenant_id=tenant_id)
+        return ResetCollectionResponse(**result)
 
     @app.post("/ingest-files", status_code=202)
     async def ingest_files(
@@ -270,13 +287,16 @@ def create_app() -> FastAPI:
         engine: MultimodalRAG = Depends(get_engine),
     ) -> QueryResponse:
         start = perf_counter()
-        result = engine.query(
-            question=payload.question,
-            collection=payload.collection,
-            top_k=payload.top_k,
-            retrieval_mode=payload.retrieval_mode,
-            tenant_id=tenant_id,
-        )
+        try:
+            result = engine.query(
+                question=payload.question,
+                collection=payload.collection,
+                top_k=payload.top_k,
+                retrieval_mode=payload.retrieval_mode,
+                tenant_id=tenant_id,
+            )
+        except RuntimeError as exc:
+            raise _service_unavailable(exc) from exc
         latency_ms = (perf_counter() - start) * 1000.0
         return to_query_response(result, latency_ms=latency_ms)
 
@@ -287,13 +307,16 @@ def create_app() -> FastAPI:
         engine: MultimodalRAG = Depends(get_engine),
     ) -> StreamingResponse:
         start = perf_counter()
-        retrieval_result = engine.query(
-            question=payload.question,
-            collection=payload.collection,
-            top_k=payload.top_k,
-            retrieval_mode=payload.retrieval_mode,
-            tenant_id=tenant_id,
-        )
+        try:
+            retrieval_result = engine.query(
+                question=payload.question,
+                collection=payload.collection,
+                top_k=payload.top_k,
+                retrieval_mode=payload.retrieval_mode,
+                tenant_id=tenant_id,
+            )
+        except RuntimeError as exc:
+            raise _service_unavailable(exc) from exc
         retrieval_latency_ms = (perf_counter() - start) * 1000.0
         response = to_query_response(retrieval_result, latency_ms=retrieval_latency_ms)
 
@@ -360,14 +383,17 @@ def create_app() -> FastAPI:
 
         query_text = prompt or "Find visually similar or related context for this image."
         start = perf_counter()
-        result = engine.query(
-            question=query_text,
-            collection=collection,
-            top_k=top_k,
-            query_image_path=query_image_path,
-            retrieval_mode=retrieval_mode,
-            tenant_id=tenant_id,
-        )
+        try:
+            result = engine.query(
+                question=query_text,
+                collection=collection,
+                top_k=top_k,
+                query_image_path=query_image_path,
+                retrieval_mode=retrieval_mode,
+                tenant_id=tenant_id,
+            )
+        except RuntimeError as exc:
+            raise _service_unavailable(exc) from exc
         latency_ms = (perf_counter() - start) * 1000.0
         return to_query_response(result, latency_ms=latency_ms)
 

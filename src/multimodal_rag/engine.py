@@ -238,6 +238,26 @@ class MultimodalRAG:
 
         return counts
 
+    def reset_collection(
+        self,
+        collection: str | None = None,
+        tenant_id: str | None = None,
+    ) -> dict[str, str | int]:
+        target_collection = self._scoped_collection(collection, tenant_id)
+        vector_removed = self.store.delete_collection(target_collection)
+        lexical_removed = 1 if self.lexical_index.delete_collection(target_collection) else 0
+        manifest_path = self._manifest_path(target_collection)
+        manifest_removed = 0
+        if manifest_path.exists():
+            manifest_path.unlink()
+            manifest_removed = 1
+        return {
+            "collection": target_collection,
+            "vector_removed": vector_removed,
+            "lexical_removed": lexical_removed,
+            "manifest_removed": manifest_removed,
+        }
+
     @staticmethod
     def _build_citations(hits: list[RetrievalHit]) -> list[Citation]:
         citations: list[Citation] = []

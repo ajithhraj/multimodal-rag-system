@@ -44,6 +44,7 @@ class Settings(BaseSettings):
 
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3"
+    api_only_mode: bool = False
 
     rate_limit_rpm: int = Field(default=60, ge=0, le=10000)
     rate_limit_enabled: bool = False
@@ -119,6 +120,9 @@ class Settings(BaseSettings):
         if requested in {"auto", "", None}:  # type: ignore[comparison-overlap]
             return "local"
         return requested  # type: ignore[return-value]
+
+    def strict_api_only_mode(self) -> bool:
+        return self.api_only_mode or self.resolved_llm_provider() == "openai"
 
 
 @lru_cache(maxsize=1)

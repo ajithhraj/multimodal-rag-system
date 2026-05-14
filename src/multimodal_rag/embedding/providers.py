@@ -21,15 +21,22 @@ class TextEmbedder:
     def __init__(self, settings: Settings):
         self.settings = settings
         self._fallback = HashEmbedder(dimensions=384)
+        self._strict = settings.strict_api_only_mode()
         self._openai = None
         if settings.has_openai_api_key():
             if OpenAIEmbeddings is None:
+                if self._strict:
+                    raise RuntimeError(
+                        "langchain_openai is required in API-only mode for OpenAI embeddings."
+                    )
                 logger.warning("langchain_openai not available, using local hash embeddings.")
             else:
                 self._openai = OpenAIEmbeddings(
                     model=settings.text_embedding_model,
                     api_key=settings.openai_api_key,
                 )
+        elif self._strict:
+            raise RuntimeError("OpenAI API key is required for embeddings in API-only mode.")
 
     @property
     def uses_openai(self) -> bool:
@@ -42,7 +49,11 @@ class TextEmbedder:
             try:
                 return self._openai.embed_documents(texts)
             except Exception as exc:  # pragma: no cover - network/model branch
+                if self._strict:
+                    raise RuntimeError(f"OpenAI document embeddings failed: {exc}") from exc
                 logger.warning("OpenAI embeddings failed, using hash fallback: %s", exc)
+        if self._strict:
+            raise RuntimeError("OpenAI embeddings are unavailable in API-only mode.")
         return self._fallback.embed_documents(texts)
 
     def embed_query(self, text: str) -> list[float]:
@@ -50,7 +61,11 @@ class TextEmbedder:
             try:
                 return self._openai.embed_query(text)
             except Exception as exc:  # pragma: no cover - network/model branch
+                if self._strict:
+                    raise RuntimeError(f"OpenAI query embedding failed: {exc}") from exc
                 logger.warning("OpenAI query embedding failed, using hash fallback: %s", exc)
+        if self._strict:
+            raise RuntimeError("OpenAI query embeddings are unavailable in API-only mode.")
         return self._fallback.embed_query(text)
 
 
@@ -70,6 +85,7 @@ class VisionEmbedder:
         self.settings = settings
         self._text_embedder = text_embedder
         self._fallback = HashEmbedder(dimensions=384)
+        self._strict = settings.strict_api_only_mode()
         self._captioner = VisionCaptioner(settings)
         self._clip = None
         self._openai_mode = text_embedder.uses_openai
@@ -79,7 +95,11 @@ class VisionEmbedder:
                 from sentence_transformers import SentenceTransformer
 
                 self._clip = SentenceTransformer("clip-ViT-B-32")
-            except Exception:
+            except Exception as exc:
+                if self._strict:
+                    raise RuntimeError(
+                        "Local CLIP fallback is disabled in API-only mode and OpenAI image embeddings are unavailable."
+                    ) from exc
                 self._clip = None
 
     @staticmethod
@@ -93,12 +113,13 @@ class VisionEmbedder:
             parts.append(clean_text)
         if image_path is not None and image_path.exists():
             caption = self._captioner.caption(image_path)
-            ocr_text = run_ocr(image_path)
             if caption:
                 parts.append(f"Image description: {caption}")
-            if ocr_text:
-                parts.append(f"OCR text: {ocr_text}")
-            if not caption and not ocr_text:
+            if not self._strict:
+                ocr_text = run_ocr(image_path)
+                if ocr_text:
+                    parts.append(f"OCR text: {ocr_text}")
+            if len(parts) == (1 if clean_text else 0):
                 parts.append(f"Image file name: {image_path.name}")
         return "\n\n".join(parts) if parts else "image retrieval query"
 
@@ -115,7 +136,11 @@ class VisionEmbedder:
                 vectors = self._clip.encode(images, convert_to_numpy=True, normalize_embeddings=True)
                 return vectors.astype(np.float32).tolist()
             except Exception as exc:  # pragma: no cover - model runtime branch
+                if self._strict:
+                    raise RuntimeError(f"Local CLIP image encoding failed in API-only mode: {exc}") from exc
                 logger.warning("CLIP image encoding failed, using text fallback: %s", exc)
+        if self._strict:
+            raise RuntimeError("OpenAI-backed image embeddings are unavailable in API-only mode.")
         return self._fallback.embed_documents(fallback_texts)
 
     def embed_query(self, text: str, image_path: Path | None = None) -> list[float]:
@@ -126,5 +151,9 @@ class VisionEmbedder:
                 vector = self._clip.encode([text], convert_to_numpy=True, normalize_embeddings=True)[0]
                 return vector.astype(np.float32).tolist()
             except Exception as exc:  # pragma: no cover - model runtime branch
+                if self._strict:
+                    raise RuntimeError(f"Local CLIP query encoding failed in API-only mode: {exc}") from exc
                 logger.warning("CLIP query encoding failed, using hash fallback: %s", exc)
+        if self._strict:
+            raise RuntimeError("Image query embeddings are unavailable in API-only mode.")
         return self._fallback.embed_query(text)

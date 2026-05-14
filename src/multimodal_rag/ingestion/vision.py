@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 class VisionCaptioner:
     def __init__(self, settings: Settings):
+        self.settings = settings
         self._enabled = settings.has_openai_api_key()
         self._model_name = settings.vision_model
         self._api_key = settings.openai_api_key
@@ -31,8 +32,17 @@ class VisionCaptioner:
                     temperature=0.0,
                 )
             except Exception as exc:  # pragma: no cover - optional dependency branch
+                if self.settings.strict_api_only_mode():
+                    raise RuntimeError(
+                        "OpenAI vision captioner is required in API-only mode but could not be initialized."
+                    ) from exc
                 logger.warning("OpenAI vision captioner unavailable, using filename-only captions: %s", exc)
                 self._llm = None
+        elif self.settings.strict_api_only_mode():
+            raise RuntimeError("OpenAI API key is required for image understanding in API-only mode.")
+
+    def allow_local_ocr(self) -> bool:
+        return not self.settings.strict_api_only_mode()
 
     @staticmethod
     def _to_data_url(image_path: Path) -> str:
@@ -42,6 +52,8 @@ class VisionCaptioner:
 
     def caption(self, image_path: Path) -> str:
         if not self._llm or self._human_message_type is None or self._system_message_type is None:
+            if self.settings.strict_api_only_mode():
+                raise RuntimeError("OpenAI vision captioning is required in API-only mode.")
             return f"Image file named {image_path.name}."
         try:
             message = self._human_message_type(
@@ -71,6 +83,8 @@ class VisionCaptioner:
             )
             return str(response.content).strip()
         except Exception as exc:  # pragma: no cover - external model/network branch
+            if self.settings.strict_api_only_mode():
+                raise RuntimeError(f"Vision captioning failed for {image_path}: {exc}") from exc
             logger.warning("Vision captioning failed for %s: %s", image_path, exc)
             return f"Image file named {image_path.name}."
 

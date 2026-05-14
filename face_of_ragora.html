@@ -551,6 +551,7 @@
         <span class="status-dot" id="api-status-dot"></span>
         <span id="api-status-text">API: checking…</span>
       </span>
+      <button class="btn-sm" onclick="resetIndexedData()" data-tip="Clear the active indexed collection">Reset Index</button>
       <button class="btn-sm" id="focus-toggle-btn" onclick="toggleFocusMode()" data-tip="Toggle sidebar">Focus</button>
       <button class="btn-sm" onclick="sendPrompt('How do I run evaluation benchmarks?')">Docs ↗</button>
       <button class="btn-sm btn-primary ripple-host" onclick="openAddFiles()" id="ingest-cta-btn">+ Add File</button>
@@ -1077,6 +1078,25 @@ function updateChunkStat() {
   animateCounter(chunkEl, current, totalIndexedChunks);
 }
 
+function resetOverviewDocuments() {
+  ingestedDocuments.length = 0;
+  totalIndexedChunks = 0;
+  seenCompletedJobs.clear();
+  const list = document.getElementById('overview-doc-list');
+  if(list) {
+    list.innerHTML = `<div class="empty-state">
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="10" fill="rgba(110,120,255,0.08)"/><path d="M12 28V14a2 2 0 012-2h8l6 6v10a2 2 0 01-2 2H14a2 2 0 01-2-2z" stroke="rgba(110,120,255,0.5)" stroke-width="1.5"/><path d="M22 12v6h6" stroke="rgba(110,120,255,0.5)" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <div class="empty-state-title">No documents yet</div>
+      <div class="empty-state-sub">Upload files from Ingest to populate your library</div>
+    </div>`;
+  }
+  const docEl = document.getElementById('stat-documents');
+  const breakdownEl = document.getElementById('stat-breakdown');
+  if(docEl) docEl.textContent = '0';
+  if(breakdownEl) breakdownEl.textContent = 'No files indexed yet';
+  updateChunkStat();
+}
+
 // ── ANIMATED COUNTER ──
 function animateCounter(el, from, to) {
   if(!el) return;
@@ -1336,6 +1356,31 @@ async function ingestSelectedFiles() {
     row.querySelector('.doc-badge').textContent='error';
     showToast('Ingest failed', 'err');
   } finally { input.value=''; }
+}
+
+async function resetIndexedData() {
+  if(!confirm(`Clear indexed data for tenant "${currentTenant()}" in the default collection?`)) return;
+  try {
+    const res = await fetch(`${API_BASE}/reset-collection`, {
+      method:'POST',
+      headers:{...authHeaders(), 'Content-Type':'application/json'},
+      body:JSON.stringify({collection:'default'})
+    });
+    const payload = await res.json();
+    if(!res.ok) throw new Error(payload.detail||`Reset failed (${res.status})`);
+    resetOverviewDocuments();
+    const list = document.getElementById('ingest-list');
+    const empty = document.getElementById('ingest-empty');
+    if(list && empty) {
+      list.innerHTML = '';
+      list.appendChild(empty);
+      empty.style.display = '';
+    }
+    setActivity('Index cleared');
+    showToast('Index reset complete', 'ok');
+  } catch(err) {
+    showToast(err.message || 'Index reset failed', 'err');
+  }
 }
 
 // ── API HEALTH ──

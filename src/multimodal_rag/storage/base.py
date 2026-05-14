@@ -34,3 +34,7 @@ class VectorStore(ABC):
         source_paths: list[str],
     ) -> int:
         raise NotImplementedError
+
+    @abstractmethod
+    def delete_collection(self, collection: str) -> int:
+        raise NotImplementedError

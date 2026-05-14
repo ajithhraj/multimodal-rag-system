@@ -338,7 +338,7 @@ def extract_pdf_chunks(path: Path, settings: Settings) -> list[Chunk]:
 
 def extract_image_chunks(path: Path, captioner: VisionCaptioner) -> list[Chunk]:
     caption = captioner.caption(path)
-    ocr_text = run_ocr(path)
+    ocr_text = run_ocr(path) if captioner.allow_local_ocr() else ""
     content = caption
     if ocr_text:
         content = f"{caption}\n\nOCR Text:\n{ocr_text}"

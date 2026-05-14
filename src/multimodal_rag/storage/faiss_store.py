@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -234,3 +235,10 @@ class FaissStore(VectorStore):
             kept_matrix = np.empty((0, matrix.shape[1]), dtype=np.float32)
         self._save_state(modality_dir, kept_chunks, kept_matrix)
         return removed
+
+    def delete_collection(self, collection: str) -> int:
+        collection_dir = self.base_dir / _safe_name(collection)
+        if not collection_dir.exists():
+            return 0
+        shutil.rmtree(collection_dir)
+        return 1
