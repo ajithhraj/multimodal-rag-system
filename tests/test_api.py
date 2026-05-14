@@ -69,6 +69,22 @@ class StubEngine:
             retrieval_mode="hybrid",
         )
 
+    def source_preview(self, source_path, collection=None, tenant_id=None, limit=6):
+        self.last_tenant_id = tenant_id
+        return {
+            "source_path": source_path,
+            "chunk_count": 1,
+            "modality_counts": {"text": 1},
+            "excerpts": [
+                {
+                    "chunk_id": "x1",
+                    "modality": "text",
+                    "page_number": 3,
+                    "excerpt": "ctx",
+                }
+            ],
+        }
+
 
 def _build_settings(tmp_path: Path, **overrides) -> Settings:
     return Settings(storage_dir=tmp_path, **overrides)
@@ -113,6 +129,10 @@ def test_query_endpoint(tmp_path):
     assert payload["retrieval_mode"] == "hybrid"
     assert payload["corrected"] is False
     assert payload["grounded"] is True
+    assert payload["provenance"]["grounded"] is True
+    assert payload["provenance"]["source_count"] == 1
+    assert payload["provenance"]["citation_count"] == 1
+    assert payload["provenance"]["top_sources"][0]["display_name"] == "doc.pdf"
     assert isinstance(payload["retrieval_diagnostics"], dict)
     assert payload["latency_ms"] is not None
     assert payload["latency_ms"] >= 0.0
@@ -319,3 +339,22 @@ def test_reset_collection_endpoint(tmp_path):
     assert payload["lexical_removed"] == 1
     assert payload["manifest_removed"] == 1
     assert engine.last_reset_collection == "default"
+
+
+def test_source_preview_endpoint(tmp_path):
+    settings = _build_settings(tmp_path)
+    engine = StubEngine(settings)
+    client = _build_client(engine)
+
+    source_path = tmp_path / "doc.pdf"
+    source_path.write_text("hello", encoding="utf-8")
+
+    response = client.get("/source-preview", params={"path": str(source_path)})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source_path"] == str(source_path)
+    assert payload["display_name"] == "doc.pdf"
+    assert payload["exists"] is True
+    assert payload["chunk_count"] == 1
+    assert payload["modality_counts"] == {"text": 1}
+    assert payload["excerpts"][0]["chunk_id"] == "x1"

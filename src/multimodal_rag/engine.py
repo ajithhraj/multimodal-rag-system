@@ -282,8 +282,76 @@ class MultimodalRAG:
 
     def _build_vision_query_vector(self, question: str, query_image_path: Path | None) -> list[float]:
         if query_image_path and query_image_path.exists():
-            return self.vision_embedder.embed_query(question or query_image_path.name, image_path=query_image_path)
+            try:
+                return self.vision_embedder.embed_query(
+                    question or query_image_path.name,
+                    image_path=query_image_path,
+                )
+            except TypeError:
+                image_vectors = self.vision_embedder.embed_images(
+                    [query_image_path],
+                    [question or query_image_path.name],
+                )
+                if image_vectors:
+                    return image_vectors[0]
+                return self.vision_embedder.embed_query(question or query_image_path.name)
         return self.vision_embedder.embed_query(question)
+
+    @staticmethod
+    def _page_sort_key(chunk: Chunk) -> tuple[int, str]:
+        page_number = chunk.metadata.get("page_number")
+        if isinstance(page_number, int):
+            return (page_number, chunk.chunk_id)
+        if isinstance(page_number, str) and page_number.isdigit():
+            return (int(page_number), chunk.chunk_id)
+        return (10**9, chunk.chunk_id)
+
+    def source_preview(
+        self,
+        source_path: str,
+        collection: str | None = None,
+        tenant_id: str | None = None,
+        limit: int = 6,
+    ) -> dict[str, object]:
+        target_collection = self._scoped_collection(collection, tenant_id)
+        collected: list[Chunk] = []
+        modality_counts: dict[str, int] = {}
+
+        for modality in (Modality.TEXT, Modality.TABLE, Modality.IMAGE):
+            chunks = self.store.get_by_source(
+                target_collection,
+                modality.value,
+                source_path,
+                limit=max(limit, 12),
+            )
+            if chunks:
+                modality_counts[modality.value] = len(chunks)
+                collected.extend(chunks)
+
+        collected.sort(key=self._page_sort_key)
+        excerpts: list[dict[str, object]] = []
+        for chunk in collected[:limit]:
+            page_number = chunk.metadata.get("page_number")
+            page_value: int | None = None
+            if isinstance(page_number, int):
+                page_value = page_number
+            elif isinstance(page_number, str) and page_number.isdigit():
+                page_value = int(page_number)
+            excerpts.append(
+                {
+                    "chunk_id": chunk.chunk_id,
+                    "modality": chunk.modality.value,
+                    "page_number": page_value,
+                    "excerpt": chunk.content.replace("\n", " ").strip()[:420],
+                }
+            )
+
+        return {
+            "source_path": source_path,
+            "chunk_count": sum(modality_counts.values()),
+            "modality_counts": modality_counts,
+            "excerpts": excerpts,
+        }
 
     @staticmethod
     def _quality_stats(hits: list[RetrievalHit]) -> dict[str, float | int]:

@@ -155,3 +155,41 @@ class QdrantStore(VectorStore):
                 self.client.delete_collection(name)
                 removed += 1
         return removed
+
+    def get_by_source(
+        self,
+        collection: str,
+        modality: str,
+        source_path: str,
+        limit: int = 10,
+    ) -> list[Chunk]:
+        name = self._collection_name(collection, modality)
+        if not self.client.collection_exists(name):
+            return []
+
+        matches: list[Chunk] = []
+        offset: str | int | None = None
+        while len(matches) < limit:
+            records, next_offset = self.client.scroll(
+                collection_name=name,
+                with_payload=True,
+                with_vectors=False,
+                limit=256,
+                offset=offset,
+            )
+            if not records:
+                break
+
+            for record in records:
+                payload = record.payload or {}
+                if str(payload.get("source_path", "")) != source_path:
+                    continue
+                matches.append(Chunk.from_payload(payload))
+                if len(matches) >= limit:
+                    break
+
+            if next_offset is None:
+                break
+            offset = next_offset
+
+        return matches

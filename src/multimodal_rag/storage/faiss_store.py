@@ -242,3 +242,17 @@ class FaissStore(VectorStore):
             return 0
         shutil.rmtree(collection_dir)
         return 1
+
+    def get_by_source(
+        self,
+        collection: str,
+        modality: str,
+        source_path: str,
+        limit: int = 10,
+    ) -> list[Chunk]:
+        modality_dir = self._modality_dir(collection, modality)
+        chunks, _ = self._load_state(modality_dir)
+        if not chunks:
+            return []
+        matches = [chunk for chunk in chunks if chunk.source_path == source_path]
+        return matches[:limit]

@@ -18,10 +18,14 @@ from multimodal_rag.api.schemas import (
     CitationItem,
     IngestPathsRequest,
     IngestResponse,
+    ProvenanceSourceItem,
     QueryRequest,
+    QueryProvenance,
     QueryResponse,
     ResetCollectionRequest,
     ResetCollectionResponse,
+    SourcePreviewExcerpt,
+    SourcePreviewResponse,
     SourceItem,
 )
 from multimodal_rag.engine import MultimodalRAG
@@ -151,6 +155,64 @@ def create_app() -> FastAPI:
     def _service_unavailable(exc: Exception) -> HTTPException:
         return HTTPException(status_code=503, detail=str(exc))
 
+    def _display_source_name(path_value: str) -> str:
+        normalized = str(path_value).replace("\\", "/")
+        last = normalized.rsplit("/", 1)[-1]
+        return last[33:] if len(last) > 33 and last[:32].isalnum() and last[32] == "_" else last
+
+    def _build_provenance(result) -> QueryProvenance:
+        source_map: dict[str, dict] = {}
+        for hit in result.hits:
+            entry = source_map.setdefault(
+                hit.chunk.source_path,
+                {
+                    "source_path": hit.chunk.source_path,
+                    "display_name": _display_source_name(hit.chunk.source_path),
+                    "modality": hit.chunk.modality.value,
+                    "chunk_count": 0,
+                    "best_score": None,
+                    "page_numbers": set(),
+                },
+            )
+            entry["chunk_count"] += 1
+            if entry["best_score"] is None or float(hit.score) > float(entry["best_score"]):
+                entry["best_score"] = float(hit.score)
+            page_number = hit.chunk.metadata.get("page_number")
+            if isinstance(page_number, int):
+                entry["page_numbers"].add(page_number)
+            elif isinstance(page_number, str) and page_number.isdigit():
+                entry["page_numbers"].add(int(page_number))
+
+        top_sources = [
+            ProvenanceSourceItem(
+                source_path=entry["source_path"],
+                display_name=entry["display_name"],
+                modality=entry["modality"],
+                chunk_count=entry["chunk_count"],
+                best_score=entry["best_score"],
+                page_numbers=sorted(entry["page_numbers"]),
+            )
+            for entry in sorted(
+                source_map.values(),
+                key=lambda item: (
+                    -(float(item["best_score"]) if item["best_score"] is not None else 0.0),
+                    item["display_name"],
+                ),
+            )[:5]
+        ]
+
+        diagnostics = result.retrieval_diagnostics or {}
+        return QueryProvenance(
+            grounded=result.grounded,
+            source_count=len(source_map),
+            citation_count=len(result.citations),
+            modalities=sorted({hit.chunk.modality.value for hit in result.hits}),
+            retrieval_mode=result.retrieval_mode,
+            corrected=result.corrected,
+            query_variants=list(diagnostics.get("query_variants", []) or []),
+            top_sources=top_sources,
+        )
+
     def to_query_response(result, latency_ms: float) -> QueryResponse:
         return QueryResponse(
             answer=result.answer,
@@ -176,6 +238,7 @@ def create_app() -> FastAPI:
             retrieval_mode=result.retrieval_mode,
             corrected=result.corrected,
             grounded=result.grounded,
+            provenance=_build_provenance(result),
             retrieval_diagnostics=result.retrieval_diagnostics,
             latency_ms=latency_ms,
         )
@@ -200,6 +263,32 @@ def create_app() -> FastAPI:
     ) -> FileResponse:
         file_path = _resolve_source_file(path)
         return FileResponse(path=file_path, filename=file_path.name)
+
+    @app.get("/source-preview", response_model=SourcePreviewResponse)
+    def source_preview(
+        path: str,
+        collection: str | None = None,
+        tenant_id: str = Depends(rate_limit),
+        engine: MultimodalRAG = Depends(get_engine),
+    ) -> SourcePreviewResponse:
+        preview = engine.source_preview(path, collection=collection, tenant_id=tenant_id, limit=6)
+        raw = Path(path).expanduser()
+        resolved = (Path.cwd() / raw).resolve() if not raw.is_absolute() else raw.resolve()
+        exists = resolved.exists() and resolved.is_file()
+        stat = resolved.stat() if exists else None
+        return SourcePreviewResponse(
+            source_path=path,
+            display_name=_display_source_name(path),
+            exists=exists,
+            byte_size=stat.st_size if stat else None,
+            updated_at=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc) if stat else None,
+            chunk_count=int(preview.get("chunk_count", 0)),
+            modality_counts=dict(preview.get("modality_counts", {})),
+            excerpts=[
+                SourcePreviewExcerpt(**excerpt)
+                for excerpt in list(preview.get("excerpts", []))
+            ],
+        )
 
     @app.post("/ingest-paths", response_model=IngestResponse)
     def ingest_paths(
@@ -328,6 +417,7 @@ def create_app() -> FastAPI:
                     "corrected": response.corrected,
                     "grounded": response.grounded,
                     "latency_retrieval_ms": response.latency_ms,
+                    "provenance": response.provenance.model_dump(),
                 },
             )
             full_answer_parts: list[str] = []
@@ -351,6 +441,7 @@ def create_app() -> FastAPI:
                     "source_count": len(response.sources),
                     "citation_count": len(response.citations),
                     "latency_ms": (perf_counter() - start) * 1000.0,
+                    "provenance": response.provenance.model_dump(),
                 },
             )
 

@@ -35,6 +35,16 @@ class VectorStore(ABC):
     ) -> int:
         raise NotImplementedError
 
-    @abstractmethod
     def delete_collection(self, collection: str) -> int:
-        raise NotImplementedError
+        _ = collection
+        return 0
+
+    def get_by_source(
+        self,
+        collection: str,
+        modality: str,
+        source_path: str,
+        limit: int = 10,
+    ) -> list[Chunk]:
+        _ = (collection, modality, source_path, limit)
+        return []

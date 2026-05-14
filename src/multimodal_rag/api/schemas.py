@@ -65,6 +65,44 @@ class CitationItem(BaseModel):
     excerpt: str | None = None
 
 
+class ProvenanceSourceItem(BaseModel):
+    source_path: str
+    display_name: str
+    modality: str
+    chunk_count: int = 0
+    best_score: float | None = None
+    page_numbers: list[int] = Field(default_factory=list)
+
+
+class QueryProvenance(BaseModel):
+    grounded: bool = True
+    source_count: int = 0
+    citation_count: int = 0
+    modalities: list[str] = Field(default_factory=list)
+    retrieval_mode: str | None = None
+    corrected: bool = False
+    query_variants: list[str] = Field(default_factory=list)
+    top_sources: list[ProvenanceSourceItem] = Field(default_factory=list)
+
+
+class SourcePreviewExcerpt(BaseModel):
+    chunk_id: str
+    modality: str
+    page_number: int | None = None
+    excerpt: str
+
+
+class SourcePreviewResponse(BaseModel):
+    source_path: str
+    display_name: str
+    exists: bool
+    byte_size: int | None = None
+    updated_at: datetime | None = None
+    chunk_count: int = 0
+    modality_counts: dict[str, int] = Field(default_factory=dict)
+    excerpts: list[SourcePreviewExcerpt] = Field(default_factory=list)
+
+
 class QueryResponse(BaseModel):
     answer: str
     sources: list[SourceItem]
@@ -72,5 +110,6 @@ class QueryResponse(BaseModel):
     retrieval_mode: str | None = None
     corrected: bool = False
     grounded: bool = True
+    provenance: QueryProvenance = Field(default_factory=QueryProvenance)
     retrieval_diagnostics: dict[str, Any] = Field(default_factory=dict)
     latency_ms: float | None = None

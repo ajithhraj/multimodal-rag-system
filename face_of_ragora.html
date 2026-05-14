@@ -351,6 +351,100 @@
   .citation-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--radius-sm); background: rgba(255,255,255,0.03); margin-bottom: 5px; border: 1px solid var(--border-faint); font-size: 12px; color: var(--text-secondary); transition: all 150ms; cursor: pointer; }
   .citation-row:hover { background: var(--accent-softer); border-color: rgba(110,120,255,0.2); color: var(--text-primary); }
   .citation-score { margin-left: auto; font-size: 11px; padding: 2px 7px; border-radius: 20px; background: var(--accent-soft); color: var(--accent-bright); font-weight: 700; font-family: var(--font-mono); }
+  .provenance-card {
+    margin-bottom: 14px; padding: 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-faint);
+    background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .provenance-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .provenance-chip {
+    padding: 9px 10px; border-radius: 12px; background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-faint);
+  }
+  .provenance-chip-label { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
+  .provenance-chip-value { font-size: 13px; color: var(--text-primary); font-weight: 600; }
+  .provenance-chip-sub { font-size: 11px; color: var(--text-secondary); }
+  .provenance-chip.ok { border-color: rgba(48,209,88,0.2); background: rgba(48,209,88,0.08); }
+  .provenance-chip.warn { border-color: rgba(255,214,10,0.22); background: rgba(255,214,10,0.08); }
+  .provenance-chip.accent { border-color: rgba(110,120,255,0.22); background: rgba(110,120,255,0.08); }
+  .top-sources { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .source-pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    border-radius: 999px; border: 1px solid var(--border-subtle);
+    padding: 7px 11px; background: rgba(255,255,255,0.04); color: var(--text-secondary);
+    font-size: 11.5px; cursor: pointer; transition: all 150ms;
+  }
+  .source-pill:hover { background: var(--accent-softer); border-color: rgba(110,120,255,0.24); color: var(--text-primary); }
+  .source-pill-score {
+    border-radius: 999px; padding: 2px 6px; background: rgba(255,255,255,0.06);
+    font-size: 10px; font-family: var(--font-mono); color: var(--text-tertiary);
+  }
+  .citation-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .citation-title { font-size: 12px; color: var(--text-primary); }
+  .citation-sub { font-size: 11px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+  /* ── SOURCE PREVIEW DRAWER ── */
+  .preview-overlay {
+    position: fixed; inset: 0; z-index: 1250;
+    background: rgba(0,0,0,0.62); backdrop-filter: blur(20px);
+    display: none; justify-content: flex-end; padding: 12px;
+  }
+  .preview-overlay.open { display: flex; animation: overlayIn 160ms ease; }
+  .preview-drawer {
+    width: min(460px, calc(100vw - 24px)); height: calc(100vh - 24px);
+    border-radius: 26px; overflow: hidden;
+    border: 1px solid var(--border-mid);
+    background: rgba(16,16,28,0.95);
+    backdrop-filter: blur(48px) saturate(1.4);
+    box-shadow: 0 30px 90px rgba(0,0,0,0.78), inset 0 1px 0 rgba(255,255,255,0.08);
+    display: flex; flex-direction: column;
+    transform: translateX(20px); opacity: 0;
+    transition: transform 220ms var(--ease-out), opacity 180ms ease;
+  }
+  .preview-overlay.open .preview-drawer { transform: translateX(0); opacity: 1; }
+  .preview-header {
+    padding: 18px 18px 14px;
+    border-bottom: 1px solid var(--border-faint);
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .preview-header-main { flex: 1; min-width: 0; }
+  .preview-eyebrow { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+  .preview-title { font-size: 18px; font-weight: 600; color: var(--text-primary); line-height: 1.2; word-break: break-word; }
+  .preview-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .preview-meta-pill {
+    border-radius: 999px; border: 1px solid var(--border-faint);
+    padding: 5px 9px; background: rgba(255,255,255,0.04);
+    font-size: 11px; color: var(--text-secondary);
+  }
+  .preview-actions { display: flex; gap: 8px; align-items: center; }
+  .preview-body { padding: 16px 18px 18px; overflow-y: auto; display: grid; gap: 10px; }
+  .preview-section-label { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.08em; }
+  .preview-excerpt {
+    padding: 12px; border-radius: 14px; background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-faint); box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .preview-excerpt-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .preview-excerpt-tag {
+    border-radius: 999px; padding: 3px 7px; font-size: 10px; font-weight: 700;
+    background: var(--accent-soft); color: var(--accent-bright);
+  }
+  .preview-excerpt-page { font-size: 10.5px; color: var(--text-tertiary); font-family: var(--font-mono); }
+  .preview-excerpt-text { font-size: 12.5px; line-height: 1.7; color: var(--text-secondary); }
+  .preview-empty {
+    padding: 16px; border-radius: 14px; border: 1px dashed var(--border-subtle);
+    background: rgba(255,255,255,0.025); color: var(--text-secondary); font-size: 12.5px;
+  }
+  .preview-loading {
+    padding: 24px 0; display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--text-secondary);
+  }
+  .preview-spinner {
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.08); border-top-color: var(--accent-bright);
+    animation: spin 800ms linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── QUERY HISTORY ── */
   .history-section { margin-top: 4px; }
@@ -450,6 +544,7 @@
   .btn-icon { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-subtle); background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-secondary); transition: all 150ms; flex-shrink: 0; font-family: var(--font-sans); }
   .btn-icon:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); border-color: var(--border-mid); }
   .btn-icon.copied { background: rgba(48,209,88,0.15); color: var(--success); border-color: rgba(48,209,88,0.3); }
+  .btn-icon:disabled { opacity: 0.45; cursor: not-allowed; }
 
   /* ── LOADING SKELETON ── */
   .skeleton { border-radius: 6px; background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%); background-size: 200% 100%; animation: skeletonPulse 1.4s ease-in-out infinite; }
@@ -472,8 +567,8 @@
   [data-tip]:hover::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: rgba(16,16,28,0.97); border: 1px solid var(--border-mid); color: var(--text-secondary); font-size: 11px; padding: 4px 9px; border-radius: 8px; white-space: nowrap; pointer-events: none; z-index: 999; animation: pageFade 150ms; box-shadow: var(--shadow-sm); }
 
   /* ── RESPONSIVE ── */
-  @media (max-width: 1180px) { .stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))} .app{margin:8px;height:calc(100vh - 16px)} }
-  @media (max-width: 920px) { .sidebar{display:none} .content{padding:14px} .topbar{padding:0 14px} .query-input-row{flex-direction:column} .stats-grid{grid-template-columns:1fr} .quick-hint,.activity-chip{display:none} }
+  @media (max-width: 1180px) { .stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))} .app{margin:8px;height:calc(100vh - 16px)} .provenance-grid{grid-template-columns:repeat(2,minmax(0,1fr))} }
+  @media (max-width: 920px) { .sidebar{display:none} .content{padding:14px} .topbar{padding:0 14px} .query-input-row{flex-direction:column} .stats-grid{grid-template-columns:1fr} .quick-hint,.activity-chip{display:none} .provenance-grid{grid-template-columns:1fr} .preview-overlay{padding:8px} .preview-drawer{width:100%;height:calc(100vh - 16px)} }
 
   /* ── SCROLLBAR ── */
   .command-list::-webkit-scrollbar { width: 5px; }
@@ -748,6 +843,26 @@
   </div>
 </div>
 
+<!-- Source Preview Drawer -->
+<div class="preview-overlay" id="preview-overlay">
+  <div class="preview-drawer" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+    <div class="preview-header">
+      <div class="preview-header-main">
+        <div class="preview-eyebrow">Source preview</div>
+        <div class="preview-title" id="preview-title">Select a source</div>
+        <div class="preview-meta" id="preview-meta"></div>
+      </div>
+      <div class="preview-actions">
+        <button class="btn-icon" id="preview-open-file" onclick="openPreviewSourceFile()" data-tip="Open file" disabled>↗</button>
+        <button class="btn-icon" onclick="closeSourcePreview()" aria-label="Close preview">✕</button>
+      </div>
+    </div>
+    <div class="preview-body" id="preview-body">
+      <div class="preview-empty">Choose a citation to inspect the supporting source.</div>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── CONSTANTS & STATE ──
 const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:8000' : window.location.origin;
@@ -759,6 +874,8 @@ let totalIndexedChunks = 0;
 const seenCompletedJobs = new Set();
 let commandIndex = 0;
 let queryHistory = [];
+let activePreviewPath = '';
+let previewController = null;
 let latencyData = [180, 210, 190, 240, 214, 195, 220, 205, 214];
 
 // ── COMMAND PALETTE ──
@@ -794,6 +911,27 @@ function displaySourceName(path='') {
 }
 function escapeInlinePath(path='') {
   return String(path).replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+}
+function escapeHtml(value='') {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+function formatBytes(bytes) {
+  if(!Number.isFinite(bytes) || bytes <= 0) return 'size unknown';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes, idx = 0;
+  while(value >= 1024 && idx < units.length - 1) { value /= 1024; idx += 1; }
+  return `${value >= 10 || idx === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[idx]}`;
+}
+function formatTimestamp(value) {
+  if(!value) return 'updated time unavailable';
+  const date = new Date(value);
+  if(Number.isNaN(date.getTime())) return 'updated time unavailable';
+  return date.toLocaleString([], {dateStyle:'medium', timeStyle:'short'});
 }
 
 function showToast(msg, type='info') {
@@ -1039,6 +1177,142 @@ function openSourceFile(p) {
   window.open(`${API_BASE}/source-file?path=${encodeURIComponent(p)}`, '_blank', 'noopener,noreferrer');
 }
 
+function openPreviewSourceFile() {
+  if(activePreviewPath) openSourceFile(activePreviewPath);
+}
+
+function closeSourcePreview() {
+  if(previewController) {
+    previewController.abort();
+    previewController = null;
+  }
+  document.getElementById('preview-overlay').classList.remove('open');
+}
+
+function renderPreviewMeta(preview) {
+  const pills = [];
+  pills.push(`<span class="preview-meta-pill">${preview.exists ? 'file available' : 'indexed source only'}</span>`);
+  if(preview.chunk_count) pills.push(`<span class="preview-meta-pill">${preview.chunk_count} indexed chunks</span>`);
+  Object.entries(preview.modality_counts || {}).forEach(([modality, count])=>{
+    pills.push(`<span class="preview-meta-pill">${count} ${escapeHtml(modality)}</span>`);
+  });
+  if(preview.byte_size) pills.push(`<span class="preview-meta-pill">${formatBytes(preview.byte_size)}</span>`);
+  pills.push(`<span class="preview-meta-pill">${formatTimestamp(preview.updated_at)}</span>`);
+  return pills.join('');
+}
+
+function renderPreviewBody(preview) {
+  const excerpts = Array.isArray(preview.excerpts) ? preview.excerpts : [];
+  if(!excerpts.length) {
+    return `<div class="preview-empty">No excerptable chunks were found for this source yet. Try re-ingesting the file or opening the raw file directly.</div>`;
+  }
+  return `<div class="preview-section-label">Indexed evidence</div>${excerpts.map(excerpt=>{
+    const page = Number.isInteger(excerpt.page_number) ? `<span class="preview-excerpt-page">page ${excerpt.page_number}</span>` : '';
+    return `<div class="preview-excerpt">
+      <div class="preview-excerpt-head">
+        <span class="preview-excerpt-tag">${escapeHtml(excerpt.modality || 'text')}</span>
+        ${page}
+      </div>
+      <div class="preview-excerpt-text">${escapeHtml(excerpt.excerpt || '')}</div>
+    </div>`;
+  }).join('')}`;
+}
+
+function setPreviewLoading(path) {
+  activePreviewPath = path || '';
+  document.getElementById('preview-title').textContent = displaySourceName(path || 'Source preview');
+  document.getElementById('preview-meta').innerHTML = `<span class="preview-meta-pill">loading preview…</span>`;
+  document.getElementById('preview-body').innerHTML = `<div class="preview-loading"><div class="preview-spinner"></div><div>Loading source evidence…</div></div>`;
+  document.getElementById('preview-open-file').disabled = !path;
+}
+
+async function openSourcePreview(path) {
+  if(!path) return;
+  const overlay = document.getElementById('preview-overlay');
+  overlay.classList.add('open');
+  setPreviewLoading(path);
+  if(previewController) previewController.abort();
+  previewController = new AbortController();
+  try {
+    const res = await fetch(`${API_BASE}/source-preview?path=${encodeURIComponent(path)}`, {
+      headers: authHeaders(),
+      signal: previewController.signal,
+    });
+    const payload = await res.json();
+    if(!res.ok) throw new Error(payload.detail || `Preview failed (${res.status})`);
+    activePreviewPath = payload.source_path || path;
+    document.getElementById('preview-open-file').disabled = !payload.exists;
+    document.getElementById('preview-title').textContent = payload.display_name || displaySourceName(path);
+    document.getElementById('preview-meta').innerHTML = renderPreviewMeta(payload);
+    document.getElementById('preview-body').innerHTML = renderPreviewBody(payload);
+  } catch(err) {
+    if(err.name === 'AbortError') return;
+    document.getElementById('preview-meta').innerHTML = `<span class="preview-meta-pill">preview unavailable</span>`;
+    document.getElementById('preview-body').innerHTML = `<div class="preview-empty">${escapeHtml(err.message || 'Could not load preview.')}</div>`;
+  }
+}
+
+function renderProvenance(provenance={}) {
+  if(!provenance || typeof provenance !== 'object') return '';
+  const grounded = provenance.grounded !== false;
+  const sourceCount = provenance.source_count || 0;
+  const citationCount = provenance.citation_count || 0;
+  const retrievalMode = provenance.retrieval_mode || 'hybrid';
+  const corrected = provenance.corrected === true;
+  const variants = Array.isArray(provenance.query_variants) ? provenance.query_variants : [];
+  const topSources = Array.isArray(provenance.top_sources) ? provenance.top_sources : [];
+  const modalities = Array.isArray(provenance.modalities) && provenance.modalities.length ? provenance.modalities.join(' · ') : 'no modalities';
+  const sourceMarkup = topSources.slice(0, 4).map(source=>{
+    const escapedPath = escapeInlinePath(source.source_path || '');
+    const score = Number.isFinite(source.best_score) ? source.best_score.toFixed(2) : '—';
+    return `<button class="source-pill" onclick="openSourcePreview('${escapedPath}')">
+      <span>${escapeHtml(source.display_name || displaySourceName(source.source_path || 'source'))}</span>
+      <span class="source-pill-score">${score}</span>
+    </button>`;
+  }).join('');
+  return `<div class="provenance-card">
+    <div class="provenance-grid">
+      <div class="provenance-chip ${grounded ? 'ok' : 'warn'}">
+        <div class="provenance-chip-label">Grounding</div>
+        <div class="provenance-chip-value">${grounded ? 'Grounded' : 'Needs review'}</div>
+        <div class="provenance-chip-sub">${citationCount} citations attached</div>
+      </div>
+      <div class="provenance-chip accent">
+        <div class="provenance-chip-label">Coverage</div>
+        <div class="provenance-chip-value">${sourceCount} sources</div>
+        <div class="provenance-chip-sub">${escapeHtml(modalities)}</div>
+      </div>
+      <div class="provenance-chip">
+        <div class="provenance-chip-label">Retrieval</div>
+        <div class="provenance-chip-value">${escapeHtml(retrievalMode)}</div>
+        <div class="provenance-chip-sub">${corrected ? 'auto-corrected to improve recall' : 'direct retrieval path'}</div>
+      </div>
+      <div class="provenance-chip">
+        <div class="provenance-chip-label">Query shaping</div>
+        <div class="provenance-chip-value">${variants.length > 1 ? `${variants.length} variants` : '1 variant'}</div>
+        <div class="provenance-chip-sub">${variants.length > 1 ? 'expanded for broader recall' : 'used original wording'}</div>
+      </div>
+    </div>
+    ${sourceMarkup ? `<div class="top-sources">${sourceMarkup}</div>` : ''}
+  </div>`;
+}
+
+function renderCitationRow(c) {
+  const sourcePath = c.source_path || c.source || c.file || '';
+  const sourceLabel = sourceName(sourcePath);
+  const page = Number.isInteger(c.page_number) ? `page ${c.page_number}` : 'no page';
+  const modality = c.modality ? String(c.modality) : 'text';
+  const excerpt = c.excerpt ? escapeHtml(c.excerpt) : 'Open this source to inspect the supporting chunk.';
+  const escapedPath = escapeInlinePath(sourcePath);
+  return `<div class="citation-row" onclick="openSourcePreview('${escapedPath}')">
+    <div class="citation-main">
+      <span class="citation-title">${escapeHtml(sourceLabel)}</span>
+      <span class="citation-sub">${escapeHtml(page)} · ${escapeHtml(modality)} · ${excerpt}</span>
+    </div>
+    <span class="citation-score">inspect</span>
+  </div>`;
+}
+
 // ── OVERVIEW DOC LIST ──
 function addDocumentsToOverview(paths) {
   const list = document.getElementById('overview-doc-list');
@@ -1056,8 +1330,8 @@ function addDocumentsToOverview(paths) {
     const row = document.createElement('div');
     row.className = 'doc-row';
     row.style.animationDelay = (idx*60)+'ms';
-    row.onclick = ()=>openSourceFile(path);
-    row.innerHTML = `<div class="doc-icon ${iconType}">${badge.toUpperCase().slice(0,3)}</div><div style="flex:1"><div class="doc-name">${name}</div><div class="doc-meta">click to open</div></div><span class="doc-badge ${badgeClass(badge)}">${badge}</span>`;
+    row.onclick = ()=>openSourcePreview(path);
+    row.innerHTML = `<div class="doc-icon ${iconType}">${badge.toUpperCase().slice(0,3)}</div><div style="flex:1"><div class="doc-name">${name}</div><div class="doc-meta">click to preview evidence</div></div><span class="doc-badge ${badgeClass(badge)}">${badge}</span>`;
     list.prepend(row);
   });
   updateOverviewStats();
@@ -1162,16 +1436,12 @@ function renderQueryResult(p) {
         <button class="btn-icon" id="copy-btn" onclick="copyResult()" data-tip="Copy answer">${copyIcon()}</button>
       </div>
     </div>
+    ${renderProvenance(p.provenance || {})}
     <div class="result-answer">${answer}</div>`;
   if(p.citations?.length) {
     html += `<div class="citations-label">Sources · ${p.citations.length}</div>`;
     p.citations.forEach(c=>{
-      const sourcePath = c.source_path || c.source || c.file || '';
-      const sourceLabel = sourceName(sourcePath);
-      const page = Number.isInteger(c.page_number) ? ` · p.${c.page_number}` : '';
-      const modality = c.modality ? ` · ${c.modality}` : '';
-      const escapedPath = escapeInlinePath(sourcePath);
-      html += `<div class="citation-row" onclick="openSourceFile('${escapedPath}')"><span>${sourceLabel}${page}${modality}</span><span class="citation-score">open</span></div>`;
+      html += renderCitationRow(c);
     });
   }
   html += '</div>';
@@ -1180,22 +1450,19 @@ function renderQueryResult(p) {
 
 // ── STREAMING QUERY ──
 async function runQueryStream(q, area) {
-  area.innerHTML = `<div class="result-card"><div class="result-header"><span class="result-header-label">Answer</span><div class="result-actions"><button class="btn-icon" id="copy-btn" onclick="copyResult()">${copyIcon()}</button></div></div><div class="result-answer" id="stream-answer"><span class="streaming-cursor">▋</span></div></div>`;
+  area.innerHTML = `<div class="result-card"><div class="result-header"><span class="result-header-label">Answer</span><div class="result-actions"><button class="btn-icon" id="copy-btn" onclick="copyResult()">${copyIcon()}</button></div></div><div id="stream-provenance"></div><div class="result-answer" id="stream-answer"><span class="streaming-cursor">▋</span></div></div>`;
   const answerEl = document.getElementById('stream-answer');
-  let answer='', citations=[];
+  const provenanceEl = document.getElementById('stream-provenance');
+  let answer='', citations=[], provenance={};
 
   function update(done) {
+    provenanceEl.innerHTML = renderProvenance(provenance);
     let html = renderMarkdown(answer);
     if(!done) html += '<span class="streaming-cursor">▋</span>';
     if(citations.length) {
       html += `<div class="citations-label">Sources · ${citations.length}</div>`;
       citations.forEach(c=>{
-        const sourcePath = c.source_path || c.source || c.file || '';
-        const sourceLabel = sourceName(sourcePath);
-        const page = Number.isInteger(c.page_number) ? ` · p.${c.page_number}` : '';
-        const modality = c.modality ? ` · ${c.modality}` : '';
-        const escapedPath = escapeInlinePath(sourcePath);
-        html += `<div class="citation-row" onclick="openSourceFile('${escapedPath}')"><span>${sourceLabel}${page}${modality}</span><span class="citation-score">open</span></div>`;
+        html += renderCitationRow(c);
       });
     }
     answerEl.innerHTML = html;
@@ -1222,9 +1489,10 @@ async function runQueryStream(q, area) {
         const raw=line.slice(5).trim();
         if(!raw||raw==='[DONE]') continue;
         let parsed; try { parsed=JSON.parse(raw); } catch { continue; }
+        if(currentEvent==='meta') { provenance = parsed.provenance || provenance; update(false); }
         if(currentEvent==='token' || currentEvent==='chunk') { answer+=(parsed.delta||parsed.text||''); update(false); }
         else if(currentEvent==='citations') { citations=parsed.citations||[]; update(false); }
-        else if(currentEvent==='done') { answer=parsed.answer||answer; update(true); }
+        else if(currentEvent==='done') { answer=parsed.answer||answer; provenance = parsed.provenance || provenance; update(true); }
       }
     }
   }
@@ -1285,7 +1553,7 @@ function appendIngestRow(filename, statusText, filePaths=[]) {
   const row = document.createElement('div');
   row.className = 'doc-row';
   const iconType = iconClassFromName(filename.split(',')[0].trim());
-  row.onclick = ()=>{ if(filePaths.length===1) openSourceFile(filePaths[0]); };
+  row.onclick = ()=>{ if(filePaths.length===1) openSourcePreview(filePaths[0]); };
   row.innerHTML = `<div class="doc-icon ${iconType}">${iconType.toUpperCase().slice(0,3)}</div><div style="flex:1"><div class="doc-name">${filename}</div><div class="progress-bar"><div class="progress-fill" id="pf-${Date.now()}" style="width:10%"></div></div><div class="doc-meta" id="dm-${Date.now()}">${statusText}</div></div><span class="doc-badge ${badgeClass(iconType==='img'?'image':iconType==='csv'?'table':'pdf')}" id="db-${Date.now()}">queued</span>`;
   list.prepend(row);
   setActivity('Ingest queued');
@@ -1309,7 +1577,7 @@ async function pollJob(jobId, row) {
         totalIndexedChunks += Number(data.result?.chunks || 0);
         updateChunkStat();
       }
-      if(Array.isArray(data.files)) { row.onclick=()=>{ if(data.files.length===1) openSourceFile(data.files[0]); }; addDocumentsToOverview(data.files); }
+      if(Array.isArray(data.files)) { row.onclick=()=>{ if(data.files.length===1) openSourcePreview(data.files[0]); }; addDocumentsToOverview(data.files); }
       setActivity('Ingest complete'); showToast('Ingest complete', 'ok'); return;
     } else if(data.status==='error') {
       fill.style.width='100%'; fill.style.background='var(--danger)'; badge.textContent='error'; meta.textContent=data.error||'ingest failed';
@@ -1423,9 +1691,10 @@ document.getElementById('command-input').addEventListener('keydown', e=>{
   else if(e.key==='Escape') closeCommandPalette();
 });
 document.getElementById('command-overlay').addEventListener('click', e=>{ if(e.target.id==='command-overlay') closeCommandPalette(); });
+document.getElementById('preview-overlay').addEventListener('click', e=>{ if(e.target.id==='preview-overlay') closeSourcePreview(); });
 document.addEventListener('keydown', e=>{
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k') { e.preventDefault(); openCommandPalette(); }
-  else if(e.key==='Escape') closeCommandPalette();
+  else if(e.key==='Escape') { closeCommandPalette(); closeSourcePreview(); }
 });
 
 // ── TILT EFFECT ON STAT CARDS ──
